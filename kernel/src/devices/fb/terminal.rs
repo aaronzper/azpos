@@ -41,6 +41,14 @@ impl FbTerminal {
         self.fb.get_height() / self.font.glyph_height
     }
 
+    pub fn set_fg(&mut self, color: RgbPixel) {
+        self.fg = color;
+    }
+
+    pub fn set_bg(&mut self, color: RgbPixel) {
+        self.bg = color;
+    }
+
     pub fn write_char(&mut self, c: char) {
         if self.row >= self.height() {
             self.fb.clear();
@@ -67,7 +75,7 @@ impl FbTerminal {
                 match self.font.get_glyph_pixels(c as usize) {
                     Some(pixels) => {
                         for (i, p) in pixels.enumerate() {
-                            let px = (i % self.font.glyph_width);
+                            let px = i % self.font.glyph_width;
                             if px > MAX_WIDTH { continue; }
 
                             let x = px + (self.col * MAX_WIDTH);

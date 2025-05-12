@@ -22,6 +22,12 @@ pub fn _log(args: core::fmt::Arguments) {
     lock.as_mut().unwrap().write_fmt(args).unwrap();
 }
 
+// Temporary until I get to ANSII escape codes lol
+pub fn set_fg_color(color: crate::devices::fb::RgbPixel) {
+    let mut lock = LOGGER.lock();
+    lock.as_mut().unwrap().set_fg(color);
+}
+
 pub fn set_logger(logger: FbTerminal) {
     let mut lock = LOGGER.lock();
     *lock = Some(logger);
