@@ -1,9 +1,10 @@
 use core::panic::PanicInfo;
-use crate::{println, terminal::global::global_terminal_initialized};
+
+use crate::{logger::logger_initialized, println};
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    if global_terminal_initialized() {
+    if logger_initialized() {
         println!("!!! KERNEL PANIC !!!");
         println!("{}", info);
     }

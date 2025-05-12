@@ -1,5 +1,8 @@
 use bootloader_api::info::{FrameBuffer, PixelFormat};
 
+mod terminal;
+pub use terminal::FbTerminal;
+
 #[derive(Copy, Clone)]
 pub struct RgbPixel {
     pub red: u8,

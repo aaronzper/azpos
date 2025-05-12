@@ -2,14 +2,12 @@ use core::fmt;
 use simple_pcf::Pcf;
 use crate::devices::fb::{Framebuffer, RgbPixel};
 
-pub mod global;
-
 const FONT: &'static [u8] = include_bytes!("font.psf");
 const MAX_WIDTH: usize = 8; // hardcode this width so we dont get crazy space
                             // between chars (we know the font so doesnt matter
                             // anyway)
 
-pub struct Terminal {
+pub struct FbTerminal {
     font: Pcf<'static>,
     fb: Framebuffer,
 
@@ -20,13 +18,13 @@ pub struct Terminal {
     bg: RgbPixel,
 }
 
-impl Terminal {
-    pub fn new(mut fb: Framebuffer) -> Terminal {
+impl FbTerminal {
+    pub fn new(mut fb: Framebuffer) -> FbTerminal {
         let font = Pcf::parse(FONT).unwrap();
 
         fb.clear();
 
-        Terminal { 
+        FbTerminal { 
             font, fb, 
             row: 0, col: 0,
             fg: RgbPixel { red: 0xFF, green: 0xFF, blue: 0xFF },
@@ -92,7 +90,7 @@ impl Terminal {
     }
 }
 
-impl fmt::Write for Terminal {
+impl fmt::Write for FbTerminal {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for c in s.chars() {
             self.write_char(c);

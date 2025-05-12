@@ -4,12 +4,12 @@
 use core::fmt::Write;
 
 use bootloader_api::{info::Optional, BootInfo};
-use devices::fb::Framebuffer;
-use terminal::{global::set_global_terminal, Terminal};
+use devices::fb::{FbTerminal, Framebuffer};
+use logger::set_logger;
 
 mod panic;
+mod logger;
 mod devices;
-mod terminal;
 
 bootloader_api::entry_point!(kmain);
 
@@ -20,8 +20,8 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     };
 
     let fb = Framebuffer::new(fb_raw);
-    let t = Terminal::new(fb);
-    set_global_terminal(t);
+    let t = FbTerminal::new(fb);
+    set_logger(t);
 
     println!("Hello world!");
     println!("{:?}", boot_info.memory_regions);
