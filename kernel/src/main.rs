@@ -35,10 +35,5 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     println!("Fb Mapping:\t{:?}", fb_addr);
     println!("Memory Regions:\n{:?}", boot_info.memory_regions);
 
-    for i in 0..=u8::MAX as u16 * 3 {
-        print!("R");
-        for _ in 0..=u8::MAX as u32 * 2000 {}
-    }
-
     panic!("End of kmain");
 }
