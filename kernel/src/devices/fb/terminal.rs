@@ -3,6 +3,7 @@ use simple_pcf::Pcf;
 use crate::devices::fb::{Framebuffer, RgbPixel};
 
 const FONT: &'static [u8] = include_bytes!("font.psf");
+const TAB_WIDTH: usize = 8;
 const MAX_WIDTH: usize = 8; // hardcode this width so we dont get crazy space
                             // between chars (we know the font so doesnt matter
                             // anyway)
@@ -54,6 +55,13 @@ impl FbTerminal {
             },
 
             '\r' => { self.col = 0; },
+
+            '\t' => {
+                let mut offset = TAB_WIDTH - (self.col % TAB_WIDTH);
+                if offset == 0 { offset = TAB_WIDTH; }
+
+                self.col += offset;
+            },
 
             c => {
                 match self.font.get_glyph_pixels(c as usize) {
