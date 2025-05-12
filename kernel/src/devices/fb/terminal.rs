@@ -67,12 +67,13 @@ impl FbTerminal {
                 match self.font.get_glyph_pixels(c as usize) {
                     Some(pixels) => {
                         for (i, p) in pixels.enumerate() {
-                            let x = 
-                                (i % self.font.glyph_width) 
-                                + (self.col * MAX_WIDTH);
-                            let y = 
-                                (i / self.font.glyph_width)
+                            let px = (i % self.font.glyph_width);
+                            if px > MAX_WIDTH { continue; }
+
+                            let x = px + (self.col * MAX_WIDTH);
+                            let y = (i / self.font.glyph_width)
                                 + (self.row * self.font.glyph_height);
+
 
                             let color = if p {
                                 self.fg
