@@ -2,30 +2,37 @@
 #![no_main]
 
 use bootloader_api::{info::Optional, BootInfo};
+use devices::fb::{Framebuffer, RgbPixel};
 
 mod panic;
+mod devices;
 
 bootloader_api::entry_point!(kmain);
 
 fn kmain(boot_info: &'static mut BootInfo) -> ! {
-    let fb = match &mut boot_info.framebuffer {
+    let fb_raw = match &mut boot_info.framebuffer {
         Optional::Some(x) => x,
         Optional::None => panic!("No framebuffer!"),
     };
 
-    let h = fb.info().height;
-    let w = fb.info().width;
-    let bpp = fb.info().bytes_per_pixel;
-    let stride = fb.info().stride;
+    let mut fb = Framebuffer::new(fb_raw);
+
+    let colors = [
+        RgbPixel { red: 0xFF, green: 0, blue: 0 },
+        RgbPixel { red: 0, green: 0xFF, blue: 0 },
+        RgbPixel { red: 0, green: 0, blue: 0xFF },
+        RgbPixel { red: 0xFF, green: 0xFF, blue: 0xFF },
+    ];
 
     loop {
-        for amt in 0..u8::MAX {
-            for r in 0..h {
-                for c in 0..w {
-                    let px_index = r * stride + c;
-                    let b_index = px_index * bpp;
+        for color in colors {
+            for i in 0..=u8::MAX {
+                let w = (i as f32/u8::MAX as f32) * fb.get_width() as f32;
 
-                    fb.buffer_mut()[b_index] = amt;
+                for r in (fb.get_height() - 200)..fb.get_height() {
+                    for c in 0..w as usize {
+                        fb.draw_pixel(c, r, color);
+                    }
                 }
             }
         }
