@@ -1,6 +1,7 @@
 [package]
 name = "azpos"
 version = "0.1.0"
+edition = "2024"
 
 [build-dependencies]
 bootloader = "0.11.10"
