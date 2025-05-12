@@ -1,19 +1,29 @@
 use std::path::PathBuf;
 
+use bootloader::BootConfig;
+
 fn main() {
     // set by cargo, build scripts should use this directory for output files
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+
     // set by cargo's artifact dependency feature, see
     // https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#artifact-dependencies
     let kernel = PathBuf::from(std::env::var_os("CARGO_BIN_FILE_AZPOS_KERNEL_azpos-kernel").unwrap());
 
-    // create an UEFI disk image (optional)
+    // Leave at default, but we can change later
+    let config = BootConfig::default();
+
+    // create an UEFI disk image
     let uefi_path = out_dir.join("uefi.img");
-    bootloader::UefiBoot::new(&kernel).create_disk_image(&uefi_path).unwrap();
+    let mut uefi_loader = bootloader::UefiBoot::new(&kernel);
+    uefi_loader.set_boot_config(&config);
+    uefi_loader.create_disk_image(&uefi_path).unwrap();
 
     // create a BIOS disk image
     let bios_path = out_dir.join("bios.img");
-    bootloader::BiosBoot::new(&kernel).create_disk_image(&bios_path).unwrap();
+    let mut bios_loader = bootloader::BiosBoot::new(&kernel);
+    bios_loader.set_boot_config(&config);
+    bios_loader.create_disk_image(&bios_path).unwrap();
 
     // pass the disk image paths as env variables to the `main.rs`
     println!("cargo:rustc-env=UEFI_PATH={}", uefi_path.display());
