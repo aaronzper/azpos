@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 bootloader_api = "0.11.10"
+simple-pcf = "0.1.1"
+spin = "0.5.2"

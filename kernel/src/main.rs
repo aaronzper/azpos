@@ -1,11 +1,15 @@
 #![no_std]
 #![no_main]
 
+use core::fmt::Write;
+
 use bootloader_api::{info::Optional, BootInfo};
-use devices::fb::{Framebuffer, RgbPixel};
+use devices::fb::Framebuffer;
+use terminal::{global::set_global_terminal, Terminal};
 
 mod panic;
 mod devices;
+mod terminal;
 
 bootloader_api::entry_point!(kmain);
 
@@ -15,26 +19,12 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
         Optional::None => panic!("No framebuffer!"),
     };
 
-    let mut fb = Framebuffer::new(fb_raw);
+    let fb = Framebuffer::new(fb_raw);
+    let t = Terminal::new(fb);
+    set_global_terminal(t);
 
-    let colors = [
-        RgbPixel { red: 0xFF, green: 0, blue: 0 },
-        RgbPixel { red: 0, green: 0xFF, blue: 0 },
-        RgbPixel { red: 0, green: 0, blue: 0xFF },
-        RgbPixel { red: 0xFF, green: 0xFF, blue: 0xFF },
-    ];
+    println!("Hello world!");
+    println!("{:?}", boot_info.memory_regions);
 
-    loop {
-        for color in colors {
-            for i in 0..=u8::MAX {
-                let w = (i as f32/u8::MAX as f32) * fb.get_width() as f32;
-
-                for r in (fb.get_height() - 200)..fb.get_height() {
-                    for c in 0..w as usize {
-                        fb.draw_pixel(c, r, color);
-                    }
-                }
-            }
-        }
-    }
+    panic!("End of kmain");
 }
