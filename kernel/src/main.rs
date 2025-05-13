@@ -4,13 +4,17 @@
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
 use devices::fb::{FbTerminal, Framebuffer};
 use logger::set_logger;
+use memory::{init_memory, KERNEL_START_ADDR};
 
-mod panic;
+#[macro_use]
 mod logger;
+mod panic;
 mod devices;
+mod memory;
 
 const BOOTCONFIG: BootloaderConfig = {
     let mut conf = BootloaderConfig::new_default();
+    conf.mappings.dynamic_range_start = Some(KERNEL_START_ADDR);
     conf.mappings.physical_memory = Some(Mapping::Dynamic);
     conf
 };
@@ -29,11 +33,9 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     set_logger(t);
 
     println!("Hello world!");
-    println!("Kernel Start:\t{:#X}", boot_info.kernel_image_offset);
-    println!("Kernel End:\t{:#X}", boot_info.kernel_image_offset + boot_info.kernel_len);
-    println!("Phys Mapping:\t{:#X}", boot_info.physical_memory_offset.take().unwrap());
-    println!("Fb Mapping:\t{:?}", fb_addr);
-    println!("Memory Regions:\n{:?}", boot_info.memory_regions);
+
+    let pmap = boot_info.physical_memory_offset.take().unwrap();
+    init_memory(pmap, &boot_info.memory_regions);
 
     panic!("End of kmain");
 }
