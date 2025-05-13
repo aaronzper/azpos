@@ -35,7 +35,8 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     println!("Hello world!");
 
     let pmap = boot_info.physical_memory_offset.take().unwrap();
-    init_memory(pmap, &boot_info.memory_regions);
+    let k_end_va = boot_info.kernel_image_offset + boot_info.kernel_len;
+    init_memory(pmap, &boot_info.memory_regions, k_end_va);
 
     panic!("End of kmain");
 }

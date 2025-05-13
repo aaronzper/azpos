@@ -1,9 +1,13 @@
+cargo-features = ["per-package-target"]
+
 [package]
 name = "azpos-kernel"
 version = "0.1.0"
 edition = "2024"
+forced-target = "x86_64-unknown-none"
 
 [dependencies]
 bootloader_api = "0.11.10"
+x86_64 = "0.15.2"
 simple-pcf = "0.1.1"
 spin = "0.5.2"
