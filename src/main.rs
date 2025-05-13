@@ -7,12 +7,16 @@ fn main() {
     let uefi = false;
 
     let mut cmd = std::process::Command::new("qemu-system-x86_64");
-    if uefi {
+    cmd.arg("-m").arg("2G");
+
+    let path = if uefi {
         cmd.arg("-bios").arg(ovmf_prebuilt::ovmf_pure_efi());
-        cmd.arg("-drive").arg(format!("format=raw,file={uefi_path}"));
+        uefi_path
     } else {
-        cmd.arg("-drive").arg(format!("format=raw,file={bios_path}"));
-    }
+        bios_path
+    };
+    cmd.arg("-drive").arg(format!("format=raw,file={path}"));
+
     let mut child = cmd.spawn().unwrap();
     child.wait().unwrap();
 }
