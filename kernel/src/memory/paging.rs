@@ -79,12 +79,21 @@ fn index_to_frame(index: usize) -> PhysFrame {
 pub struct PageAllocator<'a> {
     frame_refcounts: &'a mut [PageRefCount],
     next_alloc: usize,
+    avail_bytes: usize,
+}
+
+#[derive(Debug)]
+pub struct PhysMemoryStats {
+    pub total_bytes: usize,
+    pub avail_bytes: usize,
 }
 
 impl<'a> PageAllocator<'a> {
-    fn get_refcount(&self, frame: PhysFrame) -> PageRefCount {
-        let i = frame_to_index(frame);
-        self.frame_refcounts[i]
+    pub fn get_stats(&self) -> PhysMemoryStats {
+        PhysMemoryStats {
+            total_bytes: self.frame_refcounts.len() * PAGE_SIZE as usize,
+            avail_bytes: self.avail_bytes,
+        }
     }
 
     fn set_refcount(&mut self, frame: PhysFrame, count: PageRefCount) {
@@ -118,8 +127,9 @@ impl<'a> PageAllocator<'a> {
         }
 
         let mut allocator = PageAllocator { 
+            avail_bytes: frame_refcounts.len() * PAGE_SIZE as usize,
             frame_refcounts, 
-            next_alloc: 0
+            next_alloc: 0,
         };
 
         let reserved_frames = p_regions.iter()
@@ -135,6 +145,7 @@ impl<'a> PageAllocator<'a> {
         
         for p in reserved_frames.chain(allocated_frames) {
             allocator.set_refcount(p, 1);
+            allocator.avail_bytes -= PAGE_SIZE as usize;
         }
 
         allocator
@@ -147,6 +158,10 @@ impl<'a> PageAllocator<'a> {
         }
 
         self.frame_refcounts[i] -= 1;
+
+        if self.frame_refcounts[i] == 0 {
+            self.avail_bytes += PAGE_SIZE as usize;
+        }
     }
 }
 
@@ -161,6 +176,7 @@ unsafe impl<'a> FrameAllocator<PageSizeType> for PageAllocator<'a> {
             Some((i, _)) => {
                 self.next_alloc = i + 1;
                 self.frame_refcounts[i] = 1;
+                self.avail_bytes -= PAGE_SIZE as usize;
                 Some(index_to_frame(i))
             },
             None => None
