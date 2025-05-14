@@ -1,10 +1,13 @@
-use core::slice;
+use core::{alloc::{GlobalAlloc, Layout}, slice};
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use heap::HeapAllocator;
-use paging::{PageAllocator, PageRefCount, PAGE_SIZE};
-use x86_64::{PhysAddr, VirtAddr};
+use paging::{current_pt, PageAllocator, PageRefCount, PAGE_SIZE};
+use spin::Mutex;
+use x86_64::{structures::paging::Translate, PhysAddr, VirtAddr};
+
+use crate::devices::fb::RgbPixel;
 
 mod paging;
 mod heap;
@@ -13,14 +16,19 @@ pub const KERNEL_START_ADDR: u64 = 0xFFFF_8000_0000_0000;
 
 static mut PHYS_MAP_ADDR: VirtAddr = VirtAddr::new(0);
 static mut PHYS_SIZE: u64 = 0;
-static mut HEAP_START: VirtAddr = VirtAddr::new(0);
+
+static PAGE_ALLOCATOR: Mutex<Option<PageAllocator>> = Mutex::new(None);
 #[global_allocator]
-static HEAP_ALLOCATOR: HeapAllocator = HeapAllocator;
+static HEAP_ALLOCATOR: HeapAllocator = HeapAllocator::new();
 
 pub fn get_phys_size() -> u64 {
     unsafe {
         PHYS_SIZE
     }
+}
+
+pub fn get_heap_size() -> usize {
+    HEAP_ALLOCATOR.size()
 }
 
 fn physical_map_addr() -> VirtAddr {
@@ -43,9 +51,8 @@ fn resolve_phys_addr(pa: PhysAddr) -> Option<VirtAddr> {
 pub fn init_memory(
     pmap_va: u64, 
     p_regions: &MemoryRegions,
-    kernel_end_va: u64
+    usable_start: u64
 ) {
-
     let (last_region_index, last_region) = p_regions.iter()
         .enumerate()
         .filter(|(_, r)| r.kind == MemoryRegionKind::Usable)
@@ -58,17 +65,18 @@ pub fn init_memory(
 
     let n_frames = get_phys_size() / PAGE_SIZE;
     let sz_refcounts = n_frames * size_of::<PageRefCount>() as u64;
-    let heap_start_safe = VirtAddr::new(kernel_end_va + sz_refcounts);
-    unsafe {
-        HEAP_START = heap_start_safe;
-    }
+    let heap_start = VirtAddr::new(usable_start + sz_refcounts);
 
-    let mut allocator = unsafe {
-        let ptr = kernel_end_va as *mut PageRefCount;
+    let pg_alloc = unsafe {
+        let ptr = usable_start as *mut PageRefCount;
         let page_refcounts = slice::from_raw_parts_mut(ptr, n_frames as usize);
         PageAllocator::new(page_refcounts, p_regions, last_region_index + 1)
     };
 
-    let mut v: Vec<u128> = Vec::new();
-    v.reserve(100);
+    let mut pg_alloc_lock = PAGE_ALLOCATOR.lock();
+    *pg_alloc_lock = Some(pg_alloc);
+    drop(pg_alloc_lock);
+
+    HEAP_ALLOCATOR.init(heap_start);
+
 }

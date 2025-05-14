@@ -1,18 +1,14 @@
-use core::alloc;
-
 use bootloader_api::info::{MemoryRegion, MemoryRegionKind, MemoryRegions};
 use spin::Mutex;
-use x86_64::{registers::control::Cr3, structures::paging::{frame::PhysFrameRangeInclusive, FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB}, PhysAddr, VirtAddr};
+use x86_64::{registers::control::Cr3, structures::paging::{frame::PhysFrameRangeInclusive, mapper::MapToError, FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB}, PhysAddr, VirtAddr};
 
 use super::{physical_map_addr, resolve_phys_addr};
 
 pub type PageRefCount = u8;
-type PageSizeType = Size4KiB;
+pub type PageSizeType = Size4KiB;
 type SizedPhysFrame = PhysFrame<PageSizeType>;
 
 pub const PAGE_SIZE: u64 = 0x1000;
-
-static PAGE_ALLOC: Mutex<Option<PageAllocator>> = Mutex::new(None);
 
 pub fn current_pt() -> OffsetPageTable<'static> {
     let (pt_pa, _) = Cr3::read();
@@ -25,7 +21,11 @@ pub fn current_pt() -> OffsetPageTable<'static> {
 }
 
 fn get_frames_from_region(region: &MemoryRegion) -> 
-    PhysFrameRangeInclusive<PageSizeType> {
+    Option<PhysFrameRangeInclusive<PageSizeType>> {
+
+    if region.start == region.end {
+        return None;
+    }
 
     let first_pa = PhysAddr::new(region.start);
     let last_pa = PhysAddr::new(region.end - 1);
@@ -33,7 +33,7 @@ fn get_frames_from_region(region: &MemoryRegion) ->
     let first_frame: SizedPhysFrame = PhysFrame::containing_address(first_pa);
     let last_frame: SizedPhysFrame = PhysFrame::containing_address(last_pa);
 
-    PhysFrame::range_inclusive(first_frame, last_frame)
+    Some(PhysFrame::range_inclusive(first_frame, last_frame))
 }
 
 struct BasicAllocator<'a> {
@@ -42,6 +42,30 @@ struct BasicAllocator<'a> {
 }
 
 impl<'a> BasicAllocator<'a> {
+    pub fn get_usable_frames(&self) -> impl Iterator<Item = PhysFrame> + use<'a> {
+        let usable = self.p_regions.iter()
+            .filter(|r| r.kind == MemoryRegionKind::Usable)
+            .map(|r| { // Only include pages that fully lie within the region
+                let mut new_r = r.clone();
+                let start_mod = r.start % PAGE_SIZE;
+                if start_mod != 0 {
+                    new_r.start += PAGE_SIZE - start_mod;
+                }
+
+                let end_mod = r.end % PAGE_SIZE;
+                if end_mod != 0 {
+                    new_r.end -= end_mod;
+                }
+
+                new_r
+            })
+            .filter_map(|r| get_frames_from_region(&r))
+            .flat_map(|frames| frames)
+            .skip(self.alloced);
+
+        usable
+    }
+
     pub fn new(p_regions: &'a MemoryRegions) -> BasicAllocator<'a> {
         BasicAllocator {
             p_regions,
@@ -52,12 +76,7 @@ impl<'a> BasicAllocator<'a> {
 
 unsafe impl<'a> FrameAllocator<PageSizeType> for BasicAllocator<'a> {
     fn allocate_frame(&mut self) -> Option<SizedPhysFrame> {
-        let mut free_frames = self.p_regions.iter()
-            .filter(|r| r.kind == MemoryRegionKind::Usable)
-            .flat_map(get_frames_from_region)
-            .skip(self.alloced);
-
-        match free_frames.next() {
+        match self.get_usable_frames().next() {
             Some(frame) => {
                 self.alloced += 1;
                 Some(frame)
@@ -118,34 +137,41 @@ impl<'a> PageAllocator<'a> {
             let p_frame = basic_alloc.allocate_frame().expect("Out of memory");
             let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
 
-            let flush = unsafe {
-                pt.map_to(v_page, p_frame, flags, &mut basic_alloc).unwrap()
+            let map_result = unsafe {
+                pt.map_to(v_page, p_frame, flags, &mut basic_alloc)
             };
-            flush.flush();
+
+            match map_result {
+                Ok(f) => f.flush(),
+                Err(e) => match e {
+                    MapToError::PageAlreadyMapped(_) => (), // skip
+                    _ => panic!("{:?}", e),
+                }
+            };
 
             va = v_page.start_address() + PAGE_SIZE;
         }
 
-        let mut allocator = PageAllocator { 
+        let allocator = PageAllocator { 
             avail_bytes: frame_refcounts.len() * PAGE_SIZE as usize,
             frame_refcounts, 
             next_alloc: 0,
         };
 
-        let reserved_frames = p_regions.iter()
-            .take(n_used_regions)
-            .filter(|r| r.kind != MemoryRegionKind::Usable)
-            .flat_map(get_frames_from_region);
-
-        let allocated_frames = p_regions.iter()
-            .take(n_used_regions)
-            .filter(|r| r.kind == MemoryRegionKind::Usable)
-            .flat_map(get_frames_from_region)
-            .take(basic_alloc.alloced);
+        let mut usable_frames = basic_alloc.get_usable_frames().peekable();
         
-        for p in reserved_frames.chain(allocated_frames) {
-            allocator.set_refcount(p, 1);
-            allocator.avail_bytes -= PAGE_SIZE as usize;
+        for (i, rc) in allocator.frame_refcounts.iter_mut().enumerate() {
+            let frame = index_to_frame(i);
+            match usable_frames.peek() {
+                Some(next_frame) => if frame == *next_frame {
+                    *rc = 0;
+                    usable_frames.next();
+                    continue;
+                },
+                None => ()
+            };
+            
+            *rc = 1;
         }
 
         allocator
