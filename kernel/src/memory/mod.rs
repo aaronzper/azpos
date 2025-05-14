@@ -1,16 +1,21 @@
 use core::slice;
 
+use alloc::vec::Vec;
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
+use heap::HeapAllocator;
 use paging::{PageAllocator, PageRefCount, PAGE_SIZE};
-use x86_64::{structures::paging::{FrameAllocator, PhysFrame}, PhysAddr, VirtAddr};
+use x86_64::{PhysAddr, VirtAddr};
 
 mod paging;
+mod heap;
 
 pub const KERNEL_START_ADDR: u64 = 0xFFFF_8000_0000_0000;
 
 static mut PHYS_MAP_ADDR: VirtAddr = VirtAddr::new(0);
 static mut PHYS_SIZE: u64 = 0;
 static mut HEAP_START: VirtAddr = VirtAddr::new(0);
+#[global_allocator]
+static HEAP_ALLOCATOR: HeapAllocator = HeapAllocator;
 
 pub fn get_phys_size() -> u64 {
     unsafe {
@@ -58,19 +63,12 @@ pub fn init_memory(
         HEAP_START = heap_start_safe;
     }
 
-    let mut alloc = unsafe {
+    let mut allocator = unsafe {
         let ptr = kernel_end_va as *mut PageRefCount;
         let page_refcounts = slice::from_raw_parts_mut(ptr, n_frames as usize);
         PageAllocator::new(page_refcounts, p_regions, last_region_index + 1)
     };
 
-    let mut frames = [PhysFrame::containing_address(PhysAddr::new(0)); 100];
-    for i in 0..100 {
-        frames[i] = alloc.allocate_frame().unwrap();
-    }
-
-    for f in frames {
-        println!("freeing {:?}", f);
-        alloc.free_frame(f);
-    }
+    let mut v: Vec<u128> = Vec::new();
+    v.reserve(100);
 }
