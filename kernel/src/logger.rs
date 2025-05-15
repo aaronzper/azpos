@@ -1,9 +1,11 @@
 use core::fmt::Write;
 use spin::Mutex;
+use uart_16550::SerialPort;
 
 use crate::devices::fb::FbTerminal;
 
 static LOGGER: Mutex<Option<FbTerminal>> = Mutex::new(None);
+static SERIAL: Mutex<Option<SerialPort>> = Mutex::new(None);
 
 #[macro_export]
 macro_rules! print {
@@ -18,8 +20,26 @@ macro_rules! println {
 
 #[doc(hidden)]
 pub fn _log(args: core::fmt::Arguments) {
-    let mut lock = LOGGER.lock();
-    lock.as_mut().unwrap().write_fmt(args).unwrap();
+    let mut serial_lock = SERIAL.lock();
+    match serial_lock.as_mut() {
+        Some(s) => {
+            s.write_fmt(args).unwrap();
+        },
+        None => {
+            let mut s = unsafe {
+                SerialPort::new(0x3F8)
+            };
+            s.init();
+            s.write_fmt(args).unwrap();
+            *serial_lock = Some(s);
+        }
+    }
+
+    let mut logger_lock = LOGGER.lock();
+    match logger_lock.as_mut() {
+        Some(l) => l.write_fmt(args).unwrap(),
+        None => ()
+    }
 }
 
 // Temporary until I get to ANSII escape codes lol
