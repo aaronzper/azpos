@@ -6,6 +6,9 @@ fn main() {
     // choose whether to start the UEFI or BIOS image
     let uefi = false;
 
+    // whether to run QEMU with GDB
+    let gdb = false;
+
     let mut cmd = std::process::Command::new("qemu-system-x86_64");
     cmd.arg("-m").arg("2G");
     cmd.arg("-serial").arg("stdio");
@@ -17,6 +20,10 @@ fn main() {
         bios_path
     };
     cmd.arg("-drive").arg(format!("format=raw,file={path}"));
+
+    if gdb {
+        cmd.arg("-s").arg("-S");
+    }
 
     let mut child = cmd.spawn().unwrap();
     child.wait().unwrap();
