@@ -3,6 +3,7 @@ use bootloader_api::info::{FrameBuffer, PixelFormat};
 mod terminal;
 pub use terminal::FbTerminal;
 
+/// A single RGB pixel
 #[derive(Copy, Clone)]
 pub struct RgbPixel {
     pub red: u8,
@@ -11,11 +12,13 @@ pub struct RgbPixel {
 }
 
 impl RgbPixel {
+    /// The average value of each pixel (used for grayscale displays)
     pub fn average(&self) -> u8 {
         (self.red + self.green + self.blue) / 3
     }
 }
 
+/// A framebuffer and its metadata
 pub struct Framebuffer {
     height: usize,
     width: usize,
@@ -27,6 +30,7 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
+    /// Creates a framebuffer, given information on one from the bootloader
     pub fn new(fb: &'static mut FrameBuffer) -> Framebuffer {
         Framebuffer {
             height: fb.info().height,
@@ -38,18 +42,22 @@ impl Framebuffer {
         }
     }
 
+    /// The height, in pixels, of the display
     pub fn get_height(&self) -> usize {
         self.height
     }
 
+    /// The width, in pixels, of the display
     pub fn get_width(&self) -> usize {
         self.width
     }
 
+    /// Whether or not the display is greyscale
     pub fn is_grayscale(&self) -> bool {
         self.format == PixelFormat::U8
     }
 
+    /// Draws a pixel at a given position to the display
     pub fn draw_pixel(&mut self, x: usize, y: usize, pixel: RgbPixel) {
         let px_index = y * self.stride + x;
         let b_index = px_index * self.bytes_per_pixel;
@@ -73,6 +81,7 @@ impl Framebuffer {
         }
     }
 
+    /// Clears the display to black
     pub fn clear(&mut self) {
         let black = RgbPixel { red: 0, green: 0, blue: 0 };
 

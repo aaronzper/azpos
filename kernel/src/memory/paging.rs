@@ -1,15 +1,18 @@
 use bootloader_api::info::{MemoryRegion, MemoryRegionKind, MemoryRegions};
-use spin::Mutex;
-use x86_64::{registers::control::Cr3, structures::paging::{frame::PhysFrameRangeInclusive, mapper::MapToError, FrameAllocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size4KiB}, PhysAddr, VirtAddr};
+use x86_64::{registers::control::Cr3, structures::paging::{frame::PhysFrameRangeInclusive, mapper::MapToError, FrameAllocator, Mapper, OffsetPageTable, Page, PageTableFlags, PhysFrame, Size4KiB}, PhysAddr, VirtAddr};
 
 use super::{physical_map_addr, resolve_phys_addr};
 
+/// The type used for the physical page reference count
 pub type PageRefCount = u8;
+/// The type of the page size (used by the `x86_64` crate
 pub type PageSizeType = Size4KiB;
 type SizedPhysFrame = PhysFrame<PageSizeType>;
 
+/// The size of a page in bytes
 pub const PAGE_SIZE: u64 = 0x1000;
 
+/// Returns the currently active top-level Page Table
 pub fn current_pt() -> OffsetPageTable<'static> {
     let (pt_pa, _) = Cr3::read();
     let pt_va = resolve_phys_addr(pt_pa.start_address()).unwrap();
@@ -20,15 +23,32 @@ pub fn current_pt() -> OffsetPageTable<'static> {
     }
 }
 
+/// Returns all frames that are fully contained within the given region.
+///
+/// Returns `None` if there are no such frames.
 fn get_frames_from_region(region: &MemoryRegion) -> 
     Option<PhysFrameRangeInclusive<PageSizeType>> {
 
-    if region.start == region.end {
+    let mut start = region.start;
+    let mut end = region.end;
+
+    let start_mod = start % PAGE_SIZE;
+    if start_mod != 0 {
+        start += PAGE_SIZE - start_mod;
+    }
+
+    let end_mod = end % PAGE_SIZE;
+    if end_mod != 0 {
+        end -= end_mod;
+    }
+
+
+    if start == end {
         return None;
     }
 
-    let first_pa = PhysAddr::new(region.start);
-    let last_pa = PhysAddr::new(region.end - 1);
+    let first_pa = PhysAddr::new(start);
+    let last_pa = PhysAddr::new(end - 1);
 
     let first_frame: SizedPhysFrame = PhysFrame::containing_address(first_pa);
     let last_frame: SizedPhysFrame = PhysFrame::containing_address(last_pa);
@@ -42,31 +62,17 @@ struct BasicAllocator<'a> {
 }
 
 impl<'a> BasicAllocator<'a> {
-    pub fn get_usable_frames(&self) -> impl Iterator<Item = PhysFrame> + use<'a> {
+    fn get_usable_frames(&self) -> impl Iterator<Item = PhysFrame> + use<'a> {
         let usable = self.p_regions.iter()
             .filter(|r| r.kind == MemoryRegionKind::Usable)
-            .map(|r| { // Only include pages that fully lie within the region
-                let mut new_r = r.clone();
-                let start_mod = r.start % PAGE_SIZE;
-                if start_mod != 0 {
-                    new_r.start += PAGE_SIZE - start_mod;
-                }
-
-                let end_mod = r.end % PAGE_SIZE;
-                if end_mod != 0 {
-                    new_r.end -= end_mod;
-                }
-
-                new_r
-            })
-            .filter_map(|r| get_frames_from_region(&r))
+            .filter_map(get_frames_from_region)
             .flat_map(|frames| frames)
             .skip(self.alloced);
 
         usable
     }
 
-    pub fn new(p_regions: &'a MemoryRegions) -> BasicAllocator<'a> {
+    fn new(p_regions: &'a MemoryRegions) -> BasicAllocator<'a> {
         BasicAllocator {
             p_regions,
             alloced: 0
@@ -95,19 +101,25 @@ fn index_to_frame(index: usize) -> PhysFrame {
     PhysFrame::containing_address(pa)
 }
 
+/// Allocates physical pages (aka frames) via a global reference count.
 pub struct PageAllocator<'a> {
     frame_refcounts: &'a mut [PageRefCount],
     next_alloc: usize,
     avail_bytes: usize,
 }
 
+/// Provides statistics on the physical page allocator
 #[derive(Debug)]
 pub struct PhysMemoryStats {
+    /// The total number of bytes in the system (may be lower than actual due to
+    /// BIOS/UEFI reserved regions)
     pub total_bytes: usize,
+    /// The total number of bytes available to be allocated
     pub avail_bytes: usize,
 }
 
 impl<'a> PageAllocator<'a> {
+    /// Provides statistics on physical memory usage
     pub fn get_stats(&self) -> PhysMemoryStats {
         PhysMemoryStats {
             total_bytes: self.frame_refcounts.len() * PAGE_SIZE as usize,
@@ -115,15 +127,12 @@ impl<'a> PageAllocator<'a> {
         }
     }
 
-    fn set_refcount(&mut self, frame: PhysFrame, count: PageRefCount) {
-        let i = frame_to_index(frame);
-        self.frame_refcounts[i] = count;
-    }
-
+    /// Creates and initializes the Page allocator given a ref-count array and 
+    /// memory region list. `unsafe` since the virtual address space used by the
+    /// refcounts must be free and usable.
     pub unsafe fn new(
         frame_refcounts: &'a mut [PageRefCount],
         p_regions: &MemoryRegions,
-        n_used_regions: usize,
     ) -> PageAllocator<'a> {
 
         let mut basic_alloc = BasicAllocator::new(p_regions);
@@ -177,6 +186,7 @@ impl<'a> PageAllocator<'a> {
         allocator
     }
 
+    /// Frees a given frame
     pub fn free_frame(&mut self, frame: PhysFrame) {
         let i = frame_to_index(frame);
         if self.frame_refcounts[i] == 0 {
@@ -192,6 +202,7 @@ impl<'a> PageAllocator<'a> {
 }
 
 unsafe impl<'a> FrameAllocator<PageSizeType> for PageAllocator<'a> {
+    /// Allocates a given frame
     fn allocate_frame(&mut self) -> Option<SizedPhysFrame> {
         let index = self.frame_refcounts.iter()
             .enumerate()

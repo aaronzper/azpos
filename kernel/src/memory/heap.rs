@@ -3,7 +3,7 @@ use core::alloc::{GlobalAlloc, Layout};
 use spin::Mutex;
 use x86_64::{structures::paging::{FrameAllocator, Mapper, Page, PageTableFlags, Translate}, VirtAddr};
 
-use crate::memory::{paging::{current_pt, PageSizeType}, PAGE_ALLOCATOR};
+use crate::memory::{paging::current_pt, PAGE_ALLOCATOR};
 
 struct AllocatorInner {
     heap_start: VirtAddr,
@@ -24,7 +24,8 @@ impl AllocatorInner {
         let last_page = Page::containing_address(alloc_end - 1);
         let alloc_pages = Page::range_inclusive(first_page, last_page);
 
-        // Check if the end of the heap is actually mapped, if not alloc/map it
+        // Make sure all the pages that contain the allocation are mapped, and
+        // map them if not
         let mut pt = current_pt();
         for page in alloc_pages {
             if pt.translate_addr(page.start_address()).is_none() {
@@ -69,23 +70,30 @@ impl AllocatorInner {
     }
 }
 
+/// The global heap allocator, a bump allocator. Only actually frees memory if
+/// the entire heap is free, or if the most recent allocation is freed.
 pub struct HeapAllocator {
     inner: Mutex<Option<AllocatorInner>>,
 }
 
 impl HeapAllocator {
+    /// Creates an uninitialized heap allocator
     pub const fn new() -> HeapAllocator {
         HeapAllocator {
             inner: Mutex::new(None),
         }
     }
 
-    pub fn init(&self, heap_start: VirtAddr) {
+    /// Initializes the heap allocator. `unsafe` because the physical page
+    /// allocator must be set up by this point, and because the `heap_start`
+    /// virtual address must be actually usable for the heap.
+    pub unsafe fn init(&self, heap_start: VirtAddr) {
         let mut lock = self.inner.lock();
         assert!(lock.is_none());
         *lock = Some(AllocatorInner::new(heap_start));
     }
 
+    /// The current size of the heap in bytes
     pub fn size(&self) -> usize {
         let lock = self.inner.lock();
         let inner = lock.as_ref().unwrap();

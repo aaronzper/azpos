@@ -1,17 +1,18 @@
-use core::{alloc::{GlobalAlloc, Layout}, slice};
+use core::slice;
 
-use alloc::{boxed::Box, vec::Vec};
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use heap::HeapAllocator;
-use paging::{current_pt, PageAllocator, PageRefCount, PAGE_SIZE};
+use paging::{PageAllocator, PageRefCount, PAGE_SIZE};
 use spin::Mutex;
-use x86_64::{structures::paging::Translate, PhysAddr, VirtAddr};
+use x86_64::{PhysAddr, VirtAddr};
 
-use crate::devices::fb::RgbPixel;
 
+/// Physical page allocation and management
 mod paging;
+/// Dynamic memory allocation (the heap!)
 mod heap;
 
+/// The beginning of the kernel image (and address spave) in Virtual Memory
 pub const KERNEL_START_ADDR: u64 = 0xFFFF_8000_0000_0000;
 
 static mut PHYS_MAP_ADDR: VirtAddr = VirtAddr::new(0);
@@ -21,12 +22,14 @@ static PAGE_ALLOCATOR: Mutex<Option<PageAllocator>> = Mutex::new(None);
 #[global_allocator]
 static HEAP_ALLOCATOR: HeapAllocator = HeapAllocator::new();
 
+/// Returns the amount of physical memory on the system
 pub fn get_phys_size() -> u64 {
     unsafe {
         PHYS_SIZE
     }
 }
 
+/// Returns the size, in bytes, of the heap
 pub fn get_heap_size() -> usize {
     HEAP_ALLOCATOR.size()
 }
@@ -37,6 +40,8 @@ fn physical_map_addr() -> VirtAddr {
     }
 }
 
+/// Resolves a given physical address into the virtual address that maps to it.
+/// Used for directly accessing physical memory.
 fn resolve_phys_addr(pa: PhysAddr) -> Option<VirtAddr> {
     let sz = get_phys_size();
     if pa.as_u64() >= sz {
@@ -48,6 +53,8 @@ fn resolve_phys_addr(pa: PhysAddr) -> Option<VirtAddr> {
     }
 }
 
+/// Initializes the memory subsystem by setting up the physical page allocator
+/// and the heap allocator
 pub fn init_memory(
     pmap_va: u64, 
     p_regions: &MemoryRegions,
@@ -70,13 +77,14 @@ pub fn init_memory(
     let pg_alloc = unsafe {
         let ptr = usable_start as *mut PageRefCount;
         let page_refcounts = slice::from_raw_parts_mut(ptr, n_frames as usize);
-        PageAllocator::new(page_refcounts, p_regions, last_region_index + 1)
+        PageAllocator::new(page_refcounts, p_regions)
     };
 
     let mut pg_alloc_lock = PAGE_ALLOCATOR.lock();
     *pg_alloc_lock = Some(pg_alloc);
     drop(pg_alloc_lock);
 
-    HEAP_ALLOCATOR.init(heap_start);
-
+    unsafe {
+        HEAP_ALLOCATOR.init(heap_start);
+    }
 }

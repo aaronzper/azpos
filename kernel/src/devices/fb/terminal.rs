@@ -8,6 +8,7 @@ const MAX_WIDTH: usize = 8; // hardcode this width so we dont get crazy space
                             // between chars (we know the font so doesnt matter
                             // anyway)
 
+/// A terminal on top of a framebuffer that can be written to
 pub struct FbTerminal {
     font: Pcf<'static>,
     fb: Framebuffer,
@@ -20,6 +21,7 @@ pub struct FbTerminal {
 }
 
 impl FbTerminal {
+    /// Creates a terminal on top of a framebuffer
     pub fn new(mut fb: Framebuffer) -> FbTerminal {
         let font = Pcf::parse(FONT).unwrap();
 
@@ -33,22 +35,29 @@ impl FbTerminal {
         }
     }
 
+    /// The width, in characters, of the terminal
     pub fn width(&self) -> usize {
         self.fb.get_width() / MAX_WIDTH
     }
 
+    /// The height, in characters, of the terminal
     pub fn height(&self) -> usize {
         self.fb.get_height() / self.font.glyph_height
     }
 
+    /// Sets the forground color of new text
     pub fn set_fg(&mut self, color: RgbPixel) {
         self.fg = color;
     }
 
+    /// Sets the background color of new text
     pub fn set_bg(&mut self, color: RgbPixel) {
         self.bg = color;
     }
 
+    /// Writes a character to the next position.
+    ///
+    /// Currently supports `\n`, `\r`, and `\t`
     pub fn write_char(&mut self, c: char) {
         if self.row >= self.height() {
             self.fb.clear();

@@ -9,9 +9,13 @@ use logger::set_logger;
 use memory::{get_heap_size, init_memory, KERNEL_START_ADDR};
 
 #[macro_use]
+/// Global Kernel logger
 mod logger;
+/// Kernel panic functionality
 mod panic;
+/// Device drivers
 mod devices;
+/// Memory subsystem (paging, the heap, etc)
 mod memory;
 
 const BOOTCONFIG: BootloaderConfig = {
@@ -22,6 +26,7 @@ const BOOTCONFIG: BootloaderConfig = {
 };
 bootloader_api::entry_point!(kmain, config = &BOOTCONFIG);
 
+/// Initializes the kernel and its subsystems
 fn kmain(boot_info: &'static mut BootInfo) -> ! {
     let fb_raw = match &mut boot_info.framebuffer {
         Optional::Some(x) => x,
