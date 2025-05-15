@@ -55,10 +55,10 @@ impl FbTerminal {
         self.bg = color;
     }
 
-    /// Writes a character to the next position.
+    /// Writes a character to the next position without flushing
     ///
     /// Currently supports `\n`, `\r`, and `\t`
-    pub fn write_char(&mut self, c: char) {
+    fn write_char(&mut self, c: char) {
         if self.row >= self.height() {
             self.fb.clear();
             self.row = 0;
@@ -121,6 +121,7 @@ impl fmt::Write for FbTerminal {
         for c in s.chars() {
             self.write_char(c);
         }
+        self.fb.flush();
         Ok(())
     }
 }

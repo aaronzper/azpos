@@ -1,5 +1,7 @@
 #![no_std]
 #![no_main]
+#![feature(new_zeroed_alloc)]
+
 extern crate alloc;
 
 use alloc::{boxed::Box, vec::Vec};
@@ -28,18 +30,14 @@ bootloader_api::entry_point!(kmain, config = &BOOTCONFIG);
 
 /// Initializes the kernel and its subsystems
 fn kmain(boot_info: &'static mut BootInfo) -> ! {
-    let fb_raw = match &mut boot_info.framebuffer {
+    let fb = match &mut boot_info.framebuffer {
         Optional::Some(x) => x,
         Optional::None => panic!("No framebuffer!"),
     };
-
+    let fb_info = fb.info().clone();
+    let fb_buf = fb.buffer_mut();
     let fb_end =
-        (fb_raw.buffer().as_ptr() as u64) + fb_raw.buffer().len() as u64;
-
-    let fb = Framebuffer::new(fb_raw);
-    let t = FbTerminal::new(fb);
-    set_logger(t);
-    println!("Hello world!");
+        (fb_buf.as_ptr() as u64) + fb_buf.len() as u64;
 
     let pmap = boot_info.physical_memory_offset.take().unwrap();
     let pmap_end = pmap + boot_info.memory_regions.last().unwrap().end;
@@ -52,8 +50,12 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     // start using.
     let usable_start =
         [fb_end, pmap_end, kernel_end].into_iter().max().unwrap();
-
     init_memory(pmap, &boot_info.memory_regions, usable_start);
+
+    let fb = Framebuffer::new(fb_buf, fb_info);
+    let t = FbTerminal::new(fb);
+    set_logger(t);
+    println!("Hello world!");
 
     let mut v: Vec<Box<u128>> = Vec::new();
     for i in 0..5000 {

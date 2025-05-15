@@ -1,4 +1,5 @@
-use bootloader_api::info::{FrameBuffer, PixelFormat};
+use alloc::boxed::Box;
+use bootloader_api::info::{FrameBuffer, FrameBufferInfo, PixelFormat};
 
 mod terminal;
 pub use terminal::FbTerminal;
@@ -18,7 +19,7 @@ impl RgbPixel {
     }
 }
 
-/// A framebuffer and its metadata
+/// A double-buffered framebuffer and its metadata
 pub struct Framebuffer {
     height: usize,
     width: usize,
@@ -27,18 +28,31 @@ pub struct Framebuffer {
     format: PixelFormat,
 
     buffer: &'static mut [u8],
+    back_buffer: Box<[u8]>,
 }
 
 impl Framebuffer {
-    /// Creates a framebuffer, given information on one from the bootloader
-    pub fn new(fb: &'static mut FrameBuffer) -> Framebuffer {
+    /// Creates a double-buffered framebuffer, given information on one from 
+    /// the bootloader
+    pub fn new(fb: &'static mut [u8], info: FrameBufferInfo) -> Framebuffer {
+        let height = info.height;
+        let width = info.width;
+        let bytes_per_pixel = info.bytes_per_pixel;
+        let stride = info.stride;
+        let format = info.pixel_format;
+        let back_buffer = unsafe { // Just u8s, this is safe
+            Box::new_zeroed_slice(info.byte_len).assume_init()
+        };
+        let buffer = fb;
+
         Framebuffer {
-            height: fb.info().height,
-            width: fb.info().width,
-            bytes_per_pixel: fb.info().bytes_per_pixel,
-            stride: fb.info().stride,
-            format: fb.info().pixel_format,
-            buffer: fb.buffer_mut(),
+            height,
+            width,
+            bytes_per_pixel,
+            stride,
+            format,
+            back_buffer,
+            buffer,
         }
     }
 
@@ -57,31 +71,31 @@ impl Framebuffer {
         self.format == PixelFormat::U8
     }
 
-    /// Draws a pixel at a given position to the display
+    /// Draws a pixel at a given position to the back-buffer
     pub fn draw_pixel(&mut self, x: usize, y: usize, pixel: RgbPixel) {
         let px_index = y * self.stride + x;
         let b_index = px_index * self.bytes_per_pixel;
 
         match self.format {
-            PixelFormat::U8 => self.buffer[b_index] = pixel.average(),
+            PixelFormat::U8 => self.back_buffer[b_index] = pixel.average(),
 
             PixelFormat::Rgb => {
-                self.buffer[b_index] = pixel.red;
-                self.buffer[b_index + 1] = pixel.green;
-                self.buffer[b_index + 2] = pixel.blue;
+                self.back_buffer[b_index] = pixel.red;
+                self.back_buffer[b_index + 1] = pixel.green;
+                self.back_buffer[b_index + 2] = pixel.blue;
             }
 
             PixelFormat::Bgr => {
-                self.buffer[b_index] = pixel.blue;
-                self.buffer[b_index + 1] = pixel.green;
-                self.buffer[b_index + 2] = pixel.red;
+                self.back_buffer[b_index] = pixel.blue;
+                self.back_buffer[b_index + 1] = pixel.green;
+                self.back_buffer[b_index + 2] = pixel.red;
             },
 
             _ => unimplemented!("Unsupported pixel format"),
         }
     }
 
-    /// Clears the display to black
+    /// Clears the back-buffer to black
     pub fn clear(&mut self) {
         let black = RgbPixel { red: 0, green: 0, blue: 0 };
 
@@ -90,5 +104,10 @@ impl Framebuffer {
                 self.draw_pixel(c, r, black);
             }
         }
+    }
+
+    /// Flushes the back-buffer into the actual framebuffer
+    pub fn flush(&mut self) { 
+        self.buffer.copy_from_slice(&self.back_buffer);
     }
 }
