@@ -153,8 +153,10 @@ impl<'a> PageAllocator<'a> {
             match map_result {
                 Ok(f) => f.flush(),
                 Err(e) => match e {
-                    MapToError::PageAlreadyMapped(_) => (), // skip
-                    _ => panic!("{:?}", e),
+                    MapToError::FrameAllocationFailed => 
+                        panic!("{:?} (Out of memory)", e),
+                    MapToError::ParentEntryHugePage => (),  // These dont
+                    MapToError::PageAlreadyMapped(_) => (), // matter
                 }
             };
 
