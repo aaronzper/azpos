@@ -7,7 +7,7 @@ pub struct SerialPort {
 
 impl SerialPort {
     /// Creates a new `SerialPort`
-    pub fn new() -> SerialPort {
+    pub const fn new() -> SerialPort {
         SerialPort {
             inner: unsafe {
                 uart_16550::SerialPort::new(SERIAL_PORT)

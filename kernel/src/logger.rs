@@ -3,7 +3,7 @@ use spin::Mutex;
 use crate::devices::{fb::FbTerminal, serial::SerialPort};
 
 static LOGGER: Mutex<Option<FbTerminal>> = Mutex::new(None);
-static SERIAL: Mutex<Option<SerialPort>> = Mutex::new(None);
+static SERIAL: Mutex<SerialPort> = Mutex::new(SerialPort::new());
 
 #[macro_export]
 macro_rules! print {
@@ -19,16 +19,7 @@ macro_rules! println {
 #[doc(hidden)]
 pub fn _log(args: core::fmt::Arguments) {
     let mut serial_lock = SERIAL.lock();
-    match serial_lock.as_mut() {
-        Some(s) => {
-            s
-        },
-        None => {
-            let mut s = SerialPort::new();
-            *serial_lock = Some(s);
-            serial_lock.as_mut().unwrap()
-        }
-    }.write_fmt(args).unwrap();
+    serial_lock.write_fmt(args).unwrap();
 
     let mut logger_lock = LOGGER.lock();
     match logger_lock.as_mut() {
