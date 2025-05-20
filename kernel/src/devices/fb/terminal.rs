@@ -114,6 +114,11 @@ impl FbTerminal {
             self.row += 1;
         }
     }
+
+    /// Flushes the terminal to the screen
+    pub fn flush(&mut self) {
+        self.fb.flush();
+    }
 }
 
 impl fmt::Write for FbTerminal {
@@ -121,7 +126,7 @@ impl fmt::Write for FbTerminal {
         for c in s.chars() {
             self.write_char(c);
         }
-        self.fb.flush();
+
         Ok(())
     }
 }

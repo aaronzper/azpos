@@ -37,7 +37,10 @@ pub fn _log(args: core::fmt::Arguments) {
 
     let mut logger_lock = LOGGER.lock();
     match logger_lock.as_mut() {
-        Some(l) => l.write_fmt(args).unwrap(),
+        Some(l) => {
+            l.write_fmt(args).unwrap();
+            l.flush();
+        },
         None => ()
     }
 }

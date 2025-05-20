@@ -71,38 +71,43 @@ impl Framebuffer {
         self.format == PixelFormat::U8
     }
 
-    /// Draws a pixel at a given position to the back-buffer
-    pub fn draw_pixel(&mut self, x: usize, y: usize, pixel: RgbPixel) {
-        let px_index = y * self.stride + x;
-        let b_index = px_index * self.bytes_per_pixel;
-
+    fn draw_pixel_at_byte(&mut self, byte_index: usize, pixel: RgbPixel) {
         match self.format {
-            PixelFormat::U8 => self.back_buffer[b_index] = pixel.average(),
+            PixelFormat::U8 => self.back_buffer[byte_index] = pixel.average(),
 
             PixelFormat::Rgb => {
-                self.back_buffer[b_index] = pixel.red;
-                self.back_buffer[b_index + 1] = pixel.green;
-                self.back_buffer[b_index + 2] = pixel.blue;
+                self.back_buffer[byte_index] = pixel.red;
+                self.back_buffer[byte_index + 1] = pixel.green;
+                self.back_buffer[byte_index + 2] = pixel.blue;
             }
 
             PixelFormat::Bgr => {
-                self.back_buffer[b_index] = pixel.blue;
-                self.back_buffer[b_index + 1] = pixel.green;
-                self.back_buffer[b_index + 2] = pixel.red;
+                self.back_buffer[byte_index] = pixel.blue;
+                self.back_buffer[byte_index + 1] = pixel.green;
+                self.back_buffer[byte_index + 2] = pixel.red;
             },
 
             _ => unimplemented!("Unsupported pixel format"),
         }
     }
 
+    /// Draws a pixel at a given position to the back-buffer
+    pub fn draw_pixel(&mut self, x: usize, y: usize, pixel: RgbPixel) {
+        let px_index = y * self.stride + x;
+        let b_index = px_index * self.bytes_per_pixel;
+        self.draw_pixel_at_byte(b_index, pixel);
+    }
+
     /// Clears the back-buffer to black
     pub fn clear(&mut self) {
         let black = RgbPixel { red: 0, green: 0, blue: 0 };
+        self.clear_with_color(black);
+    }
 
-        for r in 0..self.height {
-            for c in 0..self.width {
-                self.draw_pixel(c, r, black);
-            }
+    /// Clears the back-buffer to a given color
+    pub fn clear_with_color(&mut self, color: RgbPixel) {
+        for pixel in 0..(self.stride * self.height) {
+            self.draw_pixel_at_byte(pixel * self.bytes_per_pixel, color);
         }
     }
 
