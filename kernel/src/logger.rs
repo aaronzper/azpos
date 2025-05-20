@@ -26,7 +26,7 @@ pub fn _log(args: core::fmt::Arguments) {
         None => {
             let mut s = SerialPort::new();
             *serial_lock = Some(s);
-            s
+            serial_lock.as_mut().unwrap()
         }
     }.write_fmt(args).unwrap();
 
