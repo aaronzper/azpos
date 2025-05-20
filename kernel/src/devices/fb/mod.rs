@@ -100,8 +100,7 @@ impl Framebuffer {
 
     /// Clears the back-buffer to black
     pub fn clear(&mut self) {
-        let black = RgbPixel { red: 0, green: 0, blue: 0 };
-        self.clear_with_color(black);
+        self.back_buffer.fill(0);
     }
 
     /// Clears the back-buffer to a given color
