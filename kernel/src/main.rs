@@ -48,8 +48,10 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     init_interrupts();
 
-    // Test int
-    x86_64::instructions::interrupts::int3();
+    // Force fault
+    unsafe {
+        *(0x420 as *mut u8) = 69
+    }
 
     panic!("End of kmain");
 }
