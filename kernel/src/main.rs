@@ -36,21 +36,9 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     };
     let fb_info = fb.info().clone();
     let fb_buf = fb.buffer_mut();
-    let fb_end =
-        (fb_buf.as_ptr() as u64) + fb_buf.len() as u64;
 
     let pmap = boot_info.physical_memory_offset.take().unwrap();
-    let pmap_end = pmap + boot_info.memory_regions.last().unwrap().end;
-
-    let kernel_end = boot_info.kernel_image_offset + boot_info.kernel_len;
-
-    // The bootloader maps the kernel, framebuffer, and all of physical memory
-    // into the higher-half virtual address space. The largest of the ends of
-    // these three mappings indicates the virtual address space we can
-    // start using.
-    let usable_start =
-        [fb_end, pmap_end, kernel_end].into_iter().max().unwrap();
-    init_memory(pmap, &boot_info.memory_regions, usable_start);
+    init_memory(pmap, &boot_info.memory_regions);
 
     let fb = Framebuffer::new(fb_buf, fb_info);
     let t = FbTerminal::new(fb);

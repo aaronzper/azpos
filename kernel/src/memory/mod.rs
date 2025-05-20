@@ -2,9 +2,9 @@ use core::slice;
 
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use heap::HeapAllocator;
-use paging::{PageAllocator, PageRefCount, PAGE_SIZE};
+use paging::{current_pt, PageAllocator, PageRefCount, PAGE_SIZE};
 use spin::Mutex;
-use x86_64::{PhysAddr, VirtAddr};
+use x86_64::{structures::paging::{PageTableFlags, Translate}, PhysAddr, VirtAddr};
 
 
 /// Physical page allocation and management
@@ -53,22 +53,36 @@ fn resolve_phys_addr(pa: PhysAddr) -> Option<VirtAddr> {
     }
 }
 
+fn find_usable_virtual_space() -> VirtAddr {
+    let pt = current_pt();
+    for (i, pte) in pt.level_4_table().iter().enumerate() {
+        let va = VirtAddr::new_truncate((i as u64) << 39);
+        if va.as_u64() < KERNEL_START_ADDR {
+            continue;
+        }
+
+        // First non-present page we can use!
+        if pte.flags() & PageTableFlags::PRESENT == PageTableFlags::empty() {
+            return va;
+        }
+    }
+
+    panic!("Entire kernel virtual address space used!");
+}
+
 /// Initializes the memory subsystem by setting up the physical page allocator
 /// and the heap allocator
-pub fn init_memory(
-    pmap_va: u64, 
-    p_regions: &MemoryRegions,
-    usable_start: u64
-) {
-    let (last_region_index, last_region) = p_regions.iter()
-        .enumerate()
-        .filter(|(_, r)| r.kind == MemoryRegionKind::Usable)
+pub fn init_memory(pmap_va: u64, p_regions: &MemoryRegions) {
+    let last_region = p_regions.iter()
+        .filter(|r| r.kind == MemoryRegionKind::Usable)
         .last().unwrap();
 
     unsafe {
         PHYS_MAP_ADDR = VirtAddr::new(pmap_va);
         PHYS_SIZE = last_region.end;
     }
+
+    let usable_start = find_usable_virtual_space().as_u64();
 
     let n_frames = get_phys_size() / PAGE_SIZE;
     let sz_refcounts = n_frames * size_of::<PageRefCount>() as u64;
