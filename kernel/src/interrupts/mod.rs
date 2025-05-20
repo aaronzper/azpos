@@ -10,6 +10,7 @@ lazy_static! {
     };
 }
 
+/// Initializes interrupts by loading the IDT
 pub fn init_interrupts() {
     IDT.load();
 }

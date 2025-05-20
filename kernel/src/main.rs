@@ -20,7 +20,7 @@ mod panic;
 mod devices;
 /// Memory subsystem (paging, the heap, etc)
 mod memory;
-/// CPU interrupt subsystem (faults, hardware interrupts, & syscalls)
+/// CPU interrupt subsystem (faults, hardware interrupts)
 mod interrupts;
 
 const BOOTCONFIG: BootloaderConfig = {
