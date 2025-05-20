@@ -1,10 +1,10 @@
 #![no_std]
 #![no_main]
 #![feature(new_zeroed_alloc)]
+#![feature(abi_x86_interrupt)]
 
 extern crate alloc;
 
-use alloc::{boxed::Box, vec::Vec};
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
 use devices::fb::{FbTerminal, Framebuffer};
 use interrupts::init_interrupts;
@@ -47,6 +47,9 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     set_logger(t);
 
     init_interrupts();
+
+    // Test int
+    x86_64::instructions::interrupts::int3();
 
     panic!("End of kmain");
 }
