@@ -21,14 +21,14 @@ pub fn _log(args: core::fmt::Arguments) {
     let mut serial_lock = SERIAL.lock();
     match serial_lock.as_mut() {
         Some(s) => {
-            s.write_fmt(args).unwrap();
+            s
         },
         None => {
             let mut s = SerialPort::new();
-            s.write_fmt(args).unwrap();
             *serial_lock = Some(s);
+            s
         }
-    }
+    }.write_fmt(args).unwrap();
 
     let mut logger_lock = LOGGER.lock();
     match logger_lock.as_mut() {
