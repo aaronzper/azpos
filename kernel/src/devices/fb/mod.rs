@@ -1,5 +1,5 @@
 use alloc::boxed::Box;
-use bootloader_api::info::{FrameBuffer, FrameBufferInfo, PixelFormat};
+use bootloader_api::info::{FrameBufferInfo, PixelFormat};
 
 mod terminal;
 pub use terminal::FbTerminal;
