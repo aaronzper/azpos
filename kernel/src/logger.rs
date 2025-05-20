@@ -1,8 +1,6 @@
 use core::fmt::Write;
 use spin::Mutex;
-use uart_16550::SerialPort;
-
-use crate::devices::fb::FbTerminal;
+use crate::devices::{fb::FbTerminal, serial::SerialPort};
 
 static LOGGER: Mutex<Option<FbTerminal>> = Mutex::new(None);
 static SERIAL: Mutex<Option<SerialPort>> = Mutex::new(None);
@@ -26,10 +24,7 @@ pub fn _log(args: core::fmt::Arguments) {
             s.write_fmt(args).unwrap();
         },
         None => {
-            let mut s = unsafe {
-                SerialPort::new(0x3F8)
-            };
-            s.init();
+            let mut s = SerialPort::new();
             s.write_fmt(args).unwrap();
             *serial_lock = Some(s);
         }
