@@ -99,8 +99,8 @@ extern "x86-interrupt" fn timer(_: InterruptStackFrame) {
 }
 
 extern "x86-interrupt" fn keyboard(_: InterruptStackFrame) {
-    match KEYBOARD.lock().read_char() {
-        Some(c) => print!("{}", c),
+    match KEYBOARD.lock().read_scancode() {
+        Some(c) => println!("{:?}", c),
         None => (),
     };
     PIC.lock().end_interrupt(PICInterrupt::Keyboard);
