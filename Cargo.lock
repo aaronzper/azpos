@@ -23,6 +23,7 @@ version = "0.1.0"
 dependencies = [
  "bootloader_api",
  "lazy_static",
+ "pic8259",
  "simple-pcf",
  "spin 0.5.2",
  "uart_16550",
@@ -252,6 +253,15 @@ name = "ovmf-prebuilt"
 version = "0.1.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa50141d081512ab30fd9e7e7692476866df5098b028536ad6680212e717fa8d"
+
+[[package]]
+name = "pic8259"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb844b5b01db1e0b17938685738f113bfc903846f18932b378bc0eabfa40e194"
+dependencies = [
+ "x86_64 0.14.13",
+]
 
 [[package]]
 name = "proc-macro2"

@@ -1,7 +1,11 @@
 use lazy_static::lazy_static;
+use spin::Mutex;
 use x86_64::{registers::segmentation::Segment, structures::{gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector}, idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode}, tss::TaskStateSegment}, VirtAddr};
 
-use crate::memory::PAGE_SIZE;
+use crate::{devices::pic::{self, PICInterrupt}, memory::PAGE_SIZE};
+
+/// Runs a function without interrupting
+pub use x86_64::instructions::interrupts::without_interrupts;
 
 const INT_STACK_SIZE: usize = PAGE_SIZE as usize * 4;
 const INT_STACK_INDEX: usize = 0;
@@ -16,12 +20,16 @@ struct GDTSegments {
     tss: SegmentSelector,
 }
 
+static PIC: Mutex<pic::PIC> = Mutex::new(pic::PIC::new());
+
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
 
+        idt.breakpoint.set_handler_fn(breakpoint);
+        idt[PICInterrupt::Timer as u8].set_handler_fn(timer);
+
         unsafe {
-            idt.breakpoint.set_handler_fn(breakpoint);
             idt.double_fault.set_handler_fn(double_fault)
                 .set_stack_index(INT_STACK_INDEX as u16);
         }
@@ -50,6 +58,16 @@ lazy_static! {
     };
 }
 
+/// Enables hardware interrupts
+fn enable_interrupts() {
+    x86_64::instructions::interrupts::enable();
+}
+
+/// Disables hardware interrupts
+fn disable_interrupts() {
+    x86_64::instructions::interrupts::disable();
+}
+
 /// Initializes interrupts by loading the IDT
 pub fn init_interrupts() {
     GDT.gdt.load();
@@ -62,6 +80,9 @@ pub fn init_interrupts() {
     }
 
     IDT.load();
+
+    PIC.lock().initialize();
+    enable_interrupts();
 }
 
 extern "x86-interrupt" fn breakpoint(stack: InterruptStackFrame) {
@@ -70,4 +91,9 @@ extern "x86-interrupt" fn breakpoint(stack: InterruptStackFrame) {
 
 extern "x86-interrupt" fn double_fault(stack: InterruptStackFrame, error: u64) -> ! {
     panic!("Double Fault (Error Code {}):\n{:#?}", error, stack);
+}
+
+extern "x86-interrupt" fn timer(_: InterruptStackFrame) {
+    print!("X");
+    PIC.lock().end_interrupt(PICInterrupt::Timer);
 }

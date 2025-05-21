@@ -48,9 +48,8 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     init_interrupts();
 
-    // Force fault
-    unsafe {
-        *(0x420 as *mut u8) = 69
+    loop {
+        print!("-");
     }
 
     panic!("End of kmain");
