@@ -9,7 +9,7 @@ use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig
 use devices::fb::{FbTerminal, Framebuffer};
 use interrupts::init_interrupts;
 use logger::set_logger;
-use memory::{get_heap_size, init_memory, KERNEL_START_ADDR};
+use memory::{init_memory, KERNEL_START_ADDR};
 
 #[macro_use]
 /// Global kernel logger
@@ -49,7 +49,7 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     init_interrupts();
 
     loop {
-        print!("-");
+        crate::interrupts::wait();
     }
 
     panic!("End of kmain");
