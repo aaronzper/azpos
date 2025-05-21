@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::{registers::segmentation::Segment, structures::{gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector}, idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode}, tss::TaskStateSegment}, VirtAddr};
 
-use crate::{devices::pic::{self, PICInterrupt}, memory::PAGE_SIZE};
+use crate::{devices::{keyboard::{self, KEYBOARD}, pic::{self, PICInterrupt}}, memory::PAGE_SIZE};
 
 /// Runs a function without interrupting
 pub use x86_64::instructions::interrupts::without_interrupts;
@@ -28,6 +28,7 @@ lazy_static! {
 
         idt.breakpoint.set_handler_fn(breakpoint);
         idt[PICInterrupt::Timer as u8].set_handler_fn(timer);
+        idt[PICInterrupt::Keyboard as u8].set_handler_fn(keyboard);
 
         unsafe {
             idt.double_fault.set_handler_fn(double_fault)
@@ -94,6 +95,13 @@ extern "x86-interrupt" fn double_fault(stack: InterruptStackFrame, error: u64) -
 }
 
 extern "x86-interrupt" fn timer(_: InterruptStackFrame) {
-    print!("X");
     PIC.lock().end_interrupt(PICInterrupt::Timer);
+}
+
+extern "x86-interrupt" fn keyboard(_: InterruptStackFrame) {
+    match KEYBOARD.lock().read_char() {
+        Some(c) => print!("{}", c),
+        None => (),
+    };
+    PIC.lock().end_interrupt(PICInterrupt::Keyboard);
 }

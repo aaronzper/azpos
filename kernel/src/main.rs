@@ -45,10 +45,11 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     let fb = Framebuffer::new(fb_buf, fb_info);
     let t = FbTerminal::new(fb);
     set_logger(t);
+    println!("Hello world!");
 
     init_interrupts();
 
-    loop {
+    loop { 
         crate::interrupts::wait();
     }
 

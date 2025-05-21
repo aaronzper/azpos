@@ -40,4 +40,5 @@ impl PIC {
 /// Each interrupt that the PIC might spit out
 pub enum PICInterrupt {
     Timer = PIC_1_OFFSET,
+    Keyboard, 
 }

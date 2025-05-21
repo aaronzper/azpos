@@ -4,3 +4,5 @@ pub mod fb;
 pub mod serial;
 /// Programmable Interrupt Controller driver
 pub mod pic;
+/// PS/2 keyboard driver
+pub mod keyboard;
