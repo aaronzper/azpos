@@ -9,6 +9,13 @@ const INT_STACK_INDEX: usize = 0;
 // Needs to be mut so that the stack isn't put into RODATA
 static mut INT_STACK: [u8; INT_STACK_SIZE] = [0; INT_STACK_SIZE];
 
+struct GDTSegments {
+    gdt: GlobalDescriptorTable,
+    code: SegmentSelector,
+    data: SegmentSelector,
+    tss: SegmentSelector,
+}
+
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
@@ -21,9 +28,7 @@ lazy_static! {
 
         idt
     };
-}
 
-lazy_static! {
     static ref TSS: TaskStateSegment = {
         let mut tss = TaskStateSegment::new();
 
@@ -33,36 +38,27 @@ lazy_static! {
 
         tss
     };
-}
 
-struct GDTSegments {
-    code: SegmentSelector,
-    data: SegmentSelector,
-    tss: SegmentSelector,
-}
-
-lazy_static! {
-    static ref GDT_SELECTORS: 
-        (GlobalDescriptorTable, GDTSegments) = {
+    static ref GDT: GDTSegments = {
         let mut gdt = GlobalDescriptorTable::new();
         
         let code = gdt.append(Descriptor::kernel_code_segment());
         let data = gdt.append(Descriptor::kernel_data_segment());
         let tss = gdt.append(Descriptor::tss_segment(&TSS));
 
-        (gdt, GDTSegments { code, data, tss })
+        GDTSegments { gdt, code, data, tss }
     };
 }
 
 /// Initializes interrupts by loading the IDT
 pub fn init_interrupts() {
-    GDT_SELECTORS.0.load();
+    GDT.gdt.load();
     unsafe {
-        x86_64::instructions::segmentation::CS::set_reg(GDT_SELECTORS.1.code);
-        x86_64::instructions::segmentation::DS::set_reg(GDT_SELECTORS.1.data);
-        x86_64::instructions::segmentation::ES::set_reg(GDT_SELECTORS.1.data);
-        x86_64::instructions::segmentation::SS::set_reg(GDT_SELECTORS.1.data);
-        x86_64::instructions::tables::load_tss(GDT_SELECTORS.1.tss);
+        x86_64::instructions::segmentation::CS::set_reg(GDT.code);
+        x86_64::instructions::segmentation::DS::set_reg(GDT.data);
+        x86_64::instructions::segmentation::ES::set_reg(GDT.data);
+        x86_64::instructions::segmentation::SS::set_reg(GDT.data);
+        x86_64::instructions::tables::load_tss(GDT.tss);
     }
 
     IDT.load();
