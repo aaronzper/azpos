@@ -1,16 +1,13 @@
 use bootloader_api::info::{MemoryRegion, MemoryRegionKind, MemoryRegions};
 use x86_64::{registers::control::Cr3, structures::paging::{frame::PhysFrameRangeInclusive, mapper::MapToError, FrameAllocator, Mapper, OffsetPageTable, Page, PageTableFlags, PhysFrame, Size4KiB}, PhysAddr, VirtAddr};
 
-use super::{physical_map_addr, resolve_phys_addr};
+use super::{physical_map_addr, resolve_phys_addr, PAGE_SIZE};
 
 /// The type used for the physical page reference count
 pub type PageRefCount = u8;
 /// The type of the page size (used by the `x86_64` crate
 pub type PageSizeType = Size4KiB;
 type SizedPhysFrame = PhysFrame<PageSizeType>;
-
-/// The size of a page in bytes
-pub const PAGE_SIZE: u64 = 0x1000;
 
 /// Returns the currently active top-level Page Table
 pub fn current_pt() -> OffsetPageTable<'static> {

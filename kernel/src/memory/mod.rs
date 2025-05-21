@@ -2,7 +2,7 @@ use core::slice;
 
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use heap::HeapAllocator;
-use paging::{current_pt, PageAllocator, PageRefCount, PAGE_SIZE};
+use paging::{current_pt, PageAllocator, PageRefCount};
 use spin::Mutex;
 use x86_64::{structures::paging::{PageTableFlags, Translate}, PhysAddr, VirtAddr};
 
@@ -14,6 +14,9 @@ mod heap;
 
 /// The beginning of the kernel image (and address spave) in Virtual Memory
 pub const KERNEL_START_ADDR: u64 = 0xFFFF_8000_0000_0000;
+
+/// The size of a page in bytes
+pub const PAGE_SIZE: u64 = 0x1000;
 
 static mut PHYS_MAP_ADDR: VirtAddr = VirtAddr::new(0);
 static mut PHYS_SIZE: u64 = 0;
