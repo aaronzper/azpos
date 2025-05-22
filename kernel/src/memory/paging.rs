@@ -1,5 +1,5 @@
 use bootloader_api::info::{MemoryRegion, MemoryRegionKind, MemoryRegions};
-use x86_64::{registers::control::Cr3, structures::paging::{frame::PhysFrameRangeInclusive, mapper::MapToError, FrameAllocator, Mapper, OffsetPageTable, Page, PageTableFlags, PhysFrame, Size4KiB}, PhysAddr, VirtAddr};
+use x86_64::{registers::control::Cr3, structures::paging::{frame::PhysFrameRangeInclusive, mapper::MapToError, FrameAllocator, FrameDeallocator, Mapper, OffsetPageTable, Page, PageTableFlags, PhysFrame, Size4KiB}, PhysAddr, VirtAddr};
 
 use super::{physical_map_addr, resolve_phys_addr, PAGE_SIZE};
 
@@ -186,20 +186,6 @@ impl<'a> PageAllocator<'a> {
         allocator
     }
 
-    /// Frees a given frame
-    pub fn free_frame(&mut self, frame: PhysFrame) {
-        let i = frame_to_index(frame);
-        if self.frame_refcounts[i] == 0 {
-            panic!("Physical frame double free at {:?}", frame);
-        }
-
-        self.frame_refcounts[i] -= 1;
-
-        if self.frame_refcounts[i] == 0 {
-            self.avail_bytes += PAGE_SIZE as usize;
-        }
-    }
-
     /// Allocates the given page to any physical frame.
     ///
     /// Does nothing (including updating flags) if the page is already mapped.
@@ -235,6 +221,22 @@ unsafe impl<'a> FrameAllocator<PageSizeType> for PageAllocator<'a> {
                 Some(index_to_frame(i))
             },
             None => None
+        }
+    }
+}
+
+impl<'a> FrameDeallocator<PageSizeType> for PageAllocator<'a> {
+    /// Frees a given frame
+    unsafe fn deallocate_frame(&mut self, frame: PhysFrame) {
+        let i = frame_to_index(frame);
+        if self.frame_refcounts[i] == 0 {
+            panic!("Physical frame double free at {:?}", frame);
+        }
+
+        self.frame_refcounts[i] -= 1;
+
+        if self.frame_refcounts[i] == 0 {
+            self.avail_bytes += PAGE_SIZE as usize;
         }
     }
 }
