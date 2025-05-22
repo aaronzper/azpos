@@ -1,8 +1,10 @@
 use lazy_static::lazy_static;
 use spin::Mutex;
-use x86_64::{registers::segmentation::Segment, structures::{gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector}, idt::{InterruptDescriptorTable, InterruptStackFrame, PageFaultErrorCode}, tss::TaskStateSegment}, VirtAddr};
+use x86_64::{registers::segmentation::Segment, structures::{gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector}, idt::InterruptDescriptorTable, tss::TaskStateSegment}, VirtAddr};
 
-use crate::{devices::{keyboard::{self, KEYBOARD}, pic::{self, PICInterrupt}}, memory::PAGE_SIZE};
+use crate::{devices::pic::{self, PICInterrupt}, memory::PAGE_SIZE};
+
+mod handlers;
 
 /// Runs a function without interrupting
 pub use x86_64::instructions::interrupts::without_interrupts;
@@ -26,12 +28,12 @@ lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
 
-        idt.breakpoint.set_handler_fn(breakpoint);
-        idt[PICInterrupt::Timer as u8].set_handler_fn(timer);
-        idt[PICInterrupt::Keyboard as u8].set_handler_fn(keyboard);
+        idt.breakpoint.set_handler_fn(handlers::breakpoint);
+        idt[PICInterrupt::Timer as u8].set_handler_fn(handlers::timer);
+        idt[PICInterrupt::Keyboard as u8].set_handler_fn(handlers::keyboard);
 
         unsafe {
-            idt.double_fault.set_handler_fn(double_fault)
+            idt.double_fault.set_handler_fn(handlers::double_fault)
                 .set_stack_index(INT_STACK_INDEX as u16);
         }
 
@@ -84,24 +86,4 @@ pub fn init_interrupts() {
 
     PIC.lock().initialize();
     enable_interrupts();
-}
-
-extern "x86-interrupt" fn breakpoint(stack: InterruptStackFrame) {
-    println!("Breakpoint!\n{:#?}", stack);
-}
-
-extern "x86-interrupt" fn double_fault(stack: InterruptStackFrame, error: u64) -> ! {
-    panic!("Double Fault (Error Code {}):\n{:#?}", error, stack);
-}
-
-extern "x86-interrupt" fn timer(_: InterruptStackFrame) {
-    PIC.lock().end_interrupt(PICInterrupt::Timer);
-}
-
-extern "x86-interrupt" fn keyboard(_: InterruptStackFrame) {
-    match KEYBOARD.lock().read_scancode() {
-        Some(c) => println!("{:?}", c),
-        None => (),
-    };
-    PIC.lock().end_interrupt(PICInterrupt::Keyboard);
 }
