@@ -8,6 +8,7 @@ pub type PageRefCount = u8;
 /// The type of the page size (used by the `x86_64` crate
 pub type PageSizeType = Size4KiB;
 type SizedPhysFrame = PhysFrame<PageSizeType>;
+pub type SizedPage = Page<PageSizeType>;
 
 /// Returns the currently active top-level Page Table
 pub fn current_pt() -> OffsetPageTable<'static> {
@@ -197,6 +198,24 @@ impl<'a> PageAllocator<'a> {
         if self.frame_refcounts[i] == 0 {
             self.avail_bytes += PAGE_SIZE as usize;
         }
+    }
+
+    /// Allocates the given page to any physical frame.
+    ///
+    /// Does nothing (including updating flags) if the page is already mapped.
+    pub fn alloc_page(&mut self, page: SizedPage, flags: PageTableFlags) {
+        let mut pt = current_pt();
+
+        if pt.translate_page(page).is_ok() {
+            return;
+        }
+
+        let p_frame = self.allocate_frame().expect("Out of memory");
+
+        let flush = unsafe {
+            pt.map_to(page, p_frame, flags, self).unwrap()
+        };
+        flush.flush();
     }
 }
 

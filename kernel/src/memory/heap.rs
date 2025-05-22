@@ -26,20 +26,13 @@ impl AllocatorInner {
 
         // Make sure all the pages that contain the allocation are mapped, and
         // map them if not
-        let mut pt = current_pt();
+        let mut page_alloc_lock = PAGE_ALLOCATOR.lock();
+        let page_alloc = page_alloc_lock.as_mut().unwrap();
         for page in alloc_pages {
-            if pt.translate_addr(page.start_address()).is_none() {
-                let mut alloc_lock = PAGE_ALLOCATOR.lock();
-                let p_alloc = alloc_lock.as_mut().unwrap();
-
-                let p_frame = p_alloc.allocate_frame().expect("Out of memory");
-                let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-
-                let flush = unsafe {
-                    pt.map_to(page, p_frame, flags, p_alloc).unwrap()
-                };
-                flush.flush();
-            }
+            page_alloc.alloc_page(
+                page, 
+                PageTableFlags::PRESENT | PageTableFlags::WRITABLE
+            );
         }
 
         self.heap_end = alloc_end;
