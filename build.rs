@@ -9,6 +9,7 @@ fn main() {
     // set by cargo's artifact dependency feature, see
     // https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#artifact-dependencies
     let kernel = PathBuf::from(std::env::var_os("CARGO_BIN_FILE_AZPOS_KERNEL_azpos-kernel").unwrap());
+    println!("Build kernel at {}", kernel.display());
 
     // Leave at default, but we can change later
     let config = BootConfig::default();
