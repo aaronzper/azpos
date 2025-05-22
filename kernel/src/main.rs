@@ -5,11 +5,13 @@
 
 extern crate alloc;
 
+use alloc::boxed::Box;
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
 use devices::fb::{FbTerminal, Framebuffer};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
+use scheduling::threads::Thread;
 
 #[macro_use]
 /// Global kernel logger
@@ -22,6 +24,8 @@ mod devices;
 mod memory;
 /// CPU interrupt subsystem (faults, hardware interrupts)
 mod interrupts;
+/// Scheduling subsystem (scheduler, threads, processes)
+mod scheduling;
 
 const BOOTCONFIG: BootloaderConfig = {
     let mut conf = BootloaderConfig::new_default();
@@ -49,6 +53,15 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     init_interrupts();
 
+    let threads: Box<[Thread; 500]> = 
+        Box::new(core::array::from_fn(|_| Thread::new_kthread()));
+    drop(threads);
+    println!("Again!");
+    let threads: Box<[Thread; 50]> = 
+        Box::new(core::array::from_fn(|_| Thread::new_kthread()));
+    drop(threads);
+
+    println!("Got to end!");
     loop { 
         crate::interrupts::wait();
     }

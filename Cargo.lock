@@ -21,6 +21,7 @@ dependencies = [
 name = "azpos-kernel"
 version = "0.1.0"
 dependencies = [
+ "bitvec",
  "bootloader_api",
  "lazy_static",
  "pic8259",

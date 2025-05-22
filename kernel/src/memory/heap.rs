@@ -1,9 +1,11 @@
-use core::alloc::{GlobalAlloc, Layout};
+use core::{alloc::{GlobalAlloc, Layout}, ptr::null_mut, sync::atomic::Ordering};
 
 use spin::Mutex;
 use x86_64::{structures::paging::{FrameAllocator, Mapper, Page, PageTableFlags, Translate}, VirtAddr};
 
 use crate::memory::{paging::current_pt, PAGE_ALLOCATOR};
+
+use super::stacks::{KERNEL_STACK_ALLOCATOR, STACKS_BOTTOM};
 
 struct AllocatorInner {
     heap_start: VirtAddr,
@@ -19,6 +21,14 @@ impl AllocatorInner {
         let alloc_start = // Aligns up the end of the heap to whats needed
             VirtAddr::new((self.heap_end.as_u64() + align - 1) & !(align - 1));
         let alloc_end = alloc_start + layout.size() as u64;
+
+        // If this allocation reaches into kernel stacks
+        let stack_bottom = VirtAddr::new(STACKS_BOTTOM.load(Ordering::SeqCst));
+        // Ignore if bottom is zero cause that means thers no stack
+        if stack_bottom != VirtAddr::zero() && alloc_end > stack_bottom {
+            println!("Heap allocation ran into stack!");
+            return null_mut();
+        }
 
         let first_page = Page::containing_address(alloc_start);
         let last_page = Page::containing_address(alloc_end - 1);
