@@ -11,8 +11,9 @@ pub struct Thread {
     stack_ptr: VirtAddr,
     /// The thread's entrypoint. Used by the scheduler to start it
     entry_point: VirtAddr,
-    /// Whether the thread has been started or not
-    started: bool,
+    /// How many times the thread has been scheduled. If 0, the thread hasn't
+    /// been started
+    runs: usize,
     /// The thread's stack, if its a kernel thread (user stacks are handled in
     /// user space)
     stack: Option<KThreadStack>,
@@ -29,19 +30,18 @@ impl Thread {
         Thread {
             stack_ptr: stack.top(),
             entry_point: entry_ptr,
-            started: false,
+            runs: 0,
             stack: Some(stack),
         }
     }
 
-
     /// Starts and hands control over to the thread. Panics if the thread has
     /// already been started. Unsafe cause duh.
     pub unsafe fn start(&mut self) -> ! {
-        if self.started {
+        if self.started() {
             panic!("Thread has already been started!");
         }
-        self.started = true;
+        self.runs += 1;
 
         let stack_frame = InterruptStackFrameValue::new(
             self.entry_point(),
@@ -66,5 +66,10 @@ impl Thread {
     /// If the thread is currently running this may not be current
     pub fn stack_ptr(&self) -> VirtAddr {
         self.stack_ptr
+    }
+
+    /// Returns whether the thread  has been started
+    pub fn started(&self) -> bool {
+        self.runs != 0
     }
 }

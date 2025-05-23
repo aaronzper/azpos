@@ -5,13 +5,12 @@
 
 extern crate alloc;
 
-use alloc::boxed::Box;
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
 use devices::fb::{FbTerminal, Framebuffer};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
-use scheduling::threads::Thread;
+use scheduling::{threads::Thread, SCHEDULER};
 
 #[macro_use]
 /// Global kernel logger
@@ -53,19 +52,27 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     init_interrupts();
 
-    let mut thread = Thread::new_kthread(thread);
+    let mut sched_lock = SCHEDULER.lock();
 
-    println!("Hello from main!\nStack is like hereish {:#X}", &raw const thread as u64);
-
-    unsafe {
-        thread.start();
+    for _ in 0..10 {
+        sched_lock.add_thread(Thread::new_kthread(thread));
     }
 
-    panic!("End of kmain");
+    let sched_ptr = &raw mut sched_lock;
+    drop(sched_lock); // Drop so not locked forever
+
+    // Unsafe since we're using the unlocked scheduler (plus cause `start()`
+    // itself is unsafe) but since we're the only "thread" its fine so no data
+    // races
+    unsafe { 
+        (*sched_ptr).start();
+    }
 }
 
 fn thread() {
     let x = 1234;
-    println!("Hello from thread!\nStack is like hereish {:#X}", &raw const x as u64);
+    println!("Hello from thread {}!\nStack is like hereish {:#X}", 
+        SCHEDULER.lock().currently_running(),
+        &raw const x as u64);
     loop {}
 }
