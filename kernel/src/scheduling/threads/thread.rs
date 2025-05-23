@@ -2,13 +2,15 @@ use x86_64::{registers::rflags::RFlags, structures::idt::InterruptStackFrameValu
 
 use crate::{interrupts::GDT, memory::stacks::{KThreadStack, KERNEL_STACK_ALLOCATOR}};
 
+use super::state::CpuState;
+
 /// A thread identifier
 pub type ThreadID = u32;
 
 /// An individual, scheduable thread of execution
 pub struct Thread {
-    /// The thread stack pointer. All other thread state is stored on the stack
-    stack_ptr: VirtAddr,
+    /// The thread state
+    state: CpuState,
     /// The thread's entrypoint. Used by the scheduler to start it
     entry_point: VirtAddr,
     /// How many times the thread has been scheduled. If 0, the thread hasn't
@@ -28,7 +30,7 @@ impl Thread {
         let entry_ptr = VirtAddr::from_ptr(entry_point as *const ());
 
         Thread {
-            stack_ptr: stack.top(),
+            state: CpuState::new(stack.top(), entry_ptr),
             entry_point: entry_ptr,
             runs: 0,
             stack: Some(stack),
@@ -43,29 +45,11 @@ impl Thread {
         }
         self.runs += 1;
 
-        let stack_frame = InterruptStackFrameValue::new(
-            self.entry_point(),
-            GDT.code,
-            RFlags::INTERRUPT_FLAG,
-            self.stack_ptr(),
-            GDT.data,
-        );
+        let stack = self.state.int_stack.clone();
 
         unsafe {
-            stack_frame.iretq()
+            stack.iretq()
         }
-    }
-
-    /// Returns the address of the thread's entrypoint
-    pub fn entry_point(&self) -> VirtAddr {
-        self.entry_point
-    }
-
-    /// Returns the thread's most recent known stack pointer
-    ///
-    /// If the thread is currently running this may not be current
-    pub fn stack_ptr(&self) -> VirtAddr {
-        self.stack_ptr
     }
 
     /// Returns whether the thread  has been started

@@ -1,8 +1,15 @@
+use core::arch::global_asm;
+
 use x86_64::structures::idt::InterruptStackFrame;
 
-use crate::devices::{keyboard::KEYBOARD, pic::PICInterrupt};
+use crate::{devices::{keyboard::KEYBOARD, pic::PICInterrupt}, scheduling::threads::state::CpuState};
 
 use super::PIC;
+
+global_asm!(include_str!("wrappers.s"));
+unsafe extern "C" {
+    pub fn timer();
+}
 
 pub extern "x86-interrupt" fn breakpoint(stack: InterruptStackFrame) {
     println!("Breakpoint!\n{:#?}", stack);
@@ -12,8 +19,9 @@ pub extern "x86-interrupt" fn double_fault(stack: InterruptStackFrame, error: u6
     panic!("Double Fault (Error Code {}):\n{:#?}", error, stack);
 }
 
-pub extern "x86-interrupt" fn timer(f: InterruptStackFrame) {
-    println!("Tick! {:#X}", &raw const f as u64);
+#[unsafe(no_mangle)]
+pub extern "C" fn timer_inner(s: &CpuState) {
+    println!("{:#?}", s);
     PIC.lock().end_interrupt(PICInterrupt::Timer);
 }
 

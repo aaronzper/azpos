@@ -42,7 +42,9 @@ lazy_static! {
         unsafe {
             idt.double_fault.set_handler_fn(handlers::double_fault)
                 .set_stack_index(DOUBLE_FAULT_STACK_I as u16);
-            idt[PICInterrupt::Timer as u8].set_handler_fn(handlers::timer)
+
+            let timer_addr = VirtAddr::new(handlers::timer as u64);
+            idt[PICInterrupt::Timer as u8].set_handler_addr(timer_addr)
                 .set_stack_index(TIMER_STACK_I as u16);
         }
 
