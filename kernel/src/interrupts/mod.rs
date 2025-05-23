@@ -15,10 +15,10 @@ const INT_STACK_INDEX: usize = 0;
 // Needs to be mut so that the stack isn't put into RODATA
 static mut INT_STACK: [u8; INT_STACK_SIZE] = [0; INT_STACK_SIZE];
 
-struct GDTSegments {
+pub struct GDTSegments {
     gdt: GlobalDescriptorTable,
-    code: SegmentSelector,
-    data: SegmentSelector,
+    pub code: SegmentSelector,
+    pub data: SegmentSelector,
     tss: SegmentSelector,
 }
 
@@ -50,7 +50,7 @@ lazy_static! {
         tss
     };
 
-    static ref GDT: GDTSegments = {
+    pub static ref GDT: GDTSegments = {
         let mut gdt = GlobalDescriptorTable::new();
         
         let code = gdt.append(Descriptor::kernel_code_segment());

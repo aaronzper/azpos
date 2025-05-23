@@ -53,18 +53,19 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     init_interrupts();
 
-    let threads: Box<[Thread; 500]> = 
-        Box::new(core::array::from_fn(|_| Thread::new_kthread()));
-    drop(threads);
-    println!("Again!");
-    let threads: Box<[Thread; 50]> = 
-        Box::new(core::array::from_fn(|_| Thread::new_kthread()));
-    drop(threads);
+    let mut thread = Thread::new_kthread(thread);
 
-    println!("Got to end!");
-    loop { 
-        crate::interrupts::wait();
+    println!("Hello from main!\nStack is like hereish {:#X}", &raw const thread as u64);
+
+    unsafe {
+        thread.start();
     }
 
     panic!("End of kmain");
+}
+
+fn thread() {
+    let x = 1234;
+    println!("Hello from thread!\nStack is like hereish {:#X}", &raw const x as u64);
+    loop {}
 }
