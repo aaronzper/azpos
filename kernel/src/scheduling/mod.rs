@@ -5,6 +5,8 @@ use lazy_static::lazy_static;
 use spin::{Mutex, MutexGuard};
 use threads::{state::CpuState, Thread, ThreadID, ThreadTable};
 
+use crate::devices::pic::PICInterrupt;
+
 /// Threads
 pub mod threads;
 
@@ -115,5 +117,17 @@ impl Scheduler {
         let new_t = self.get_thread_mut(new_id).unwrap();
         new_t.add_run();
         *state = new_t.state.clone();
+    }
+}
+
+/// Yields control back to the scheduler
+///
+/// (Right now this just raises a timer interrupt to run the scheduler but once
+/// i have a "yield" syscall I'll use that)
+pub fn kthread_yield() {
+    unsafe {
+        // Kinda jank but raise a timer interrupt to "yield"
+        x86_64::instructions::interrupts::
+            software_interrupt::<{PICInterrupt::Timer as u8}>();
     }
 }

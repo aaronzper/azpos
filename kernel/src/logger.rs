@@ -1,6 +1,6 @@
 use core::fmt::Write;
 use spin::Mutex;
-use crate::{devices::{fb::FbTerminal, serial::SerialPort}, interrupts::without_interrupts};
+use crate::{devices::{fb::FbTerminal, serial::SerialPort}, interrupts::without_interrupts, scheduling::kthread_yield};
 
 static LOGGER: Mutex<Option<FbTerminal>> = Mutex::new(None);
 static SERIAL: Mutex<SerialPort> = Mutex::new(SerialPort::new());
@@ -18,7 +18,13 @@ macro_rules! println {
 
 #[doc(hidden)]
 pub fn _log(args: core::fmt::Arguments) {
-    let mut serial_lock = SERIAL.lock();
+    let mut serial_lock = loop {
+        match SERIAL.try_lock() {
+            Some(x) => break x,
+            None => kthread_yield(),
+        }
+    };
+
     without_interrupts(|| {
         serial_lock.write_fmt(args).unwrap();
 

@@ -10,7 +10,7 @@ use devices::{fb::{FbTerminal, Framebuffer}, pic::PICInterrupt};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
-use scheduling::{threads::Thread, SCHEDULER};
+use scheduling::{kthread_yield, threads::Thread, SCHEDULER};
 
 #[macro_use]
 /// Global kernel logger
@@ -75,9 +75,6 @@ fn thread() {
     });
     loop {
         println!("Hi from thread {}", id);
-        unsafe {
-            // Kinda jank but raise a timer interrupt to "yield"
-            x86_64::instructions::interrupts::software_interrupt::<{PICInterrupt::Timer as u8}>();
-        }
+        kthread_yield();
     }
 }
