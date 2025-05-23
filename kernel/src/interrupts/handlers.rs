@@ -2,7 +2,7 @@ use core::arch::global_asm;
 
 use x86_64::structures::idt::InterruptStackFrame;
 
-use crate::{devices::{keyboard::KEYBOARD, pic::PICInterrupt}, scheduling::threads::state::CpuState};
+use crate::{devices::{keyboard::KEYBOARD, pic::PICInterrupt}, scheduling::{threads::state::CpuState, SCHEDULER}};
 
 use super::PIC;
 
@@ -20,8 +20,10 @@ pub extern "x86-interrupt" fn double_fault(stack: InterruptStackFrame, error: u6
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn timer_inner(s: &CpuState) {
-    println!("{:#?}", s);
+pub extern "C" fn timer_inner(s: &mut CpuState) {
+    unsafe {
+        SCHEDULER.lock().schedule(s);
+    }
     PIC.lock().end_interrupt(PICInterrupt::Timer);
 }
 

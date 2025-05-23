@@ -2,7 +2,7 @@ use x86_64::{registers::rflags::RFlags, structures::idt::InterruptStackFrameValu
 
 use crate::interrupts::GDT;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 /// Stores the state of the CPU (registers, etc)
 pub struct CpuState {

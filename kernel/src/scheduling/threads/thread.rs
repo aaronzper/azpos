@@ -10,7 +10,7 @@ pub type ThreadID = u32;
 /// An individual, scheduable thread of execution
 pub struct Thread {
     /// The thread state
-    state: CpuState,
+    pub state: CpuState,
     /// The thread's entrypoint. Used by the scheduler to start it
     entry_point: VirtAddr,
     /// How many times the thread has been scheduled. If 0, the thread hasn't
@@ -55,5 +55,15 @@ impl Thread {
     /// Returns whether the thread  has been started
     pub fn started(&self) -> bool {
         self.runs != 0
+    }
+
+    /// Returns the number of times this thread has been scheduled
+    pub fn runs(&self) -> usize {
+        self.runs
+    }
+
+    /// Increments the `runs` counter
+    pub fn add_run(&mut self) {
+        self.runs += 1
     }
 }

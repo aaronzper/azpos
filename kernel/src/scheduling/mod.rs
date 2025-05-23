@@ -1,7 +1,9 @@
+use core::cmp::Ordering;
+
 use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use spin::{Mutex, MutexGuard};
-use threads::{Thread, ThreadID, ThreadTable};
+use threads::{state::CpuState, Thread, ThreadID, ThreadTable};
 
 /// Threads
 pub mod threads;
@@ -79,5 +81,39 @@ impl Scheduler {
 
             None => panic!("No threads to start")
         }
+    }
+
+    /// Runs a round of the scheduler, picking a new thread to run
+    ///
+    /// `state` needs to be a ref to the `CpuState` that spawned this interrupt,
+    /// allowing the scheduler to save it to the old thread and update it
+    /// with that of the new one.
+    pub unsafe fn schedule(&mut self, state: &mut CpuState) {
+        let new_id = self.runnable.iter()
+            .min_by(|id_a, id_b| {
+                let t_a = self.get_thread(**id_a).unwrap();
+                let t_b = self.get_thread(**id_b).unwrap();
+                let runs_a = t_a.runs();
+                let runs_b = t_b.runs();
+
+                if runs_a < runs_b {
+                    Ordering::Less
+                } else if runs_a == runs_b {
+                    Ordering::Equal
+                } else {
+                    Ordering::Greater
+                }
+            })
+            .cloned()
+            .expect("No threads to run!");
+
+        let old_id = self.currently_running();
+        let old_t = self.get_thread_mut(old_id).unwrap();
+        old_t.state = state.clone();
+
+        self.currently_running = Some(new_id);
+        let new_t = self.get_thread_mut(new_id).unwrap();
+        new_t.add_run();
+        *state = new_t.state.clone();
     }
 }

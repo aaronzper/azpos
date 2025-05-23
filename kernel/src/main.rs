@@ -6,7 +6,7 @@
 extern crate alloc;
 
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
-use devices::fb::{FbTerminal, Framebuffer};
+use devices::{fb::{FbTerminal, Framebuffer}, pic::PICInterrupt};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
@@ -54,7 +54,7 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     let mut sched_lock = SCHEDULER.lock();
 
-    for _ in 0..10 {
+    for _ in 0..20 {
         sched_lock.add_thread(Thread::new_kthread(thread));
     }
 
@@ -70,9 +70,14 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 }
 
 fn thread() {
-    let x = 1234;
-    println!("Hello from thread {}!\nStack is like hereish {:#X}", 
-        SCHEDULER.lock().currently_running(),
-        &raw const x as u64);
-    loop {}
+    let id = interrupts::without_interrupts(|| {
+       SCHEDULER.lock().currently_running()
+    });
+    loop {
+        println!("Hi from thread {}", id);
+        unsafe {
+            // Kinda jank but raise a timer interrupt to "yield"
+            x86_64::instructions::interrupts::software_interrupt::<{PICInterrupt::Timer as u8}>();
+        }
+    }
 }
