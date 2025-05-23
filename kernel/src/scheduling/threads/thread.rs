@@ -1,14 +1,13 @@
 use crate::memory::stacks::{KThreadStack, KERNEL_STACK_ALLOCATOR};
 
-use super::state::CpuState;
 
 /// A thread identifier
 pub type ThreadID = u32;
 
 /// An individual, scheduable thread of execution
 pub struct Thread {
-    /// The state of the thread
-    state: CpuState,
+    /// The thread stack pointer. All other thread state is stored on the stack
+    stack_ptr: VirtAddr,
     /// The thread's stack, if its a kernel thread (user stacks are handled in
     /// user space)
     stack: Option<KThreadStack>,
@@ -20,7 +19,7 @@ impl Thread {
             .expect("Out of memory");
 
         Thread {
-            state: CpuState {},
+            stack_ptr: stack.top(),
             stack: Some(stack),
         }
     }
