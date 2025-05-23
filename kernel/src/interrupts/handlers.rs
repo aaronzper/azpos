@@ -12,7 +12,8 @@ pub extern "x86-interrupt" fn double_fault(stack: InterruptStackFrame, error: u6
     panic!("Double Fault (Error Code {}):\n{:#?}", error, stack);
 }
 
-pub extern "x86-interrupt" fn timer(_: InterruptStackFrame) {
+pub extern "x86-interrupt" fn timer(f: InterruptStackFrame) {
+    println!("Tick! {:#X}", &raw const f as u64);
     PIC.lock().end_interrupt(PICInterrupt::Timer);
 }
 

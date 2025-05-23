@@ -9,11 +9,19 @@ mod handlers;
 /// Runs a function without interrupting
 pub use x86_64::instructions::interrupts::without_interrupts;
 
-const INT_STACK_SIZE: usize = PAGE_SIZE as usize * 4;
-const INT_STACK_INDEX: usize = 0;
+const STACK_SIZE: usize = PAGE_SIZE as usize * 4;
 
 // Needs to be mut so that the stack isn't put into RODATA
-static mut INT_STACK: [u8; INT_STACK_SIZE] = [0; INT_STACK_SIZE];
+static mut DOUBLE_FAULT_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+const DOUBLE_FAULT_STACK_I: usize = 0;
+
+static mut TIMER_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+const TIMER_STACK_I: usize = 1;
+
+fn stack_end(stack: *const [u8; STACK_SIZE]) -> VirtAddr {
+    let top = stack as usize + STACK_SIZE;
+    VirtAddr::new(top as u64)
+}
 
 pub struct GDTSegments {
     gdt: GlobalDescriptorTable,
@@ -29,12 +37,13 @@ lazy_static! {
         let mut idt = InterruptDescriptorTable::new();
 
         idt.breakpoint.set_handler_fn(handlers::breakpoint);
-        idt[PICInterrupt::Timer as u8].set_handler_fn(handlers::timer);
         idt[PICInterrupt::Keyboard as u8].set_handler_fn(handlers::keyboard);
 
         unsafe {
             idt.double_fault.set_handler_fn(handlers::double_fault)
-                .set_stack_index(INT_STACK_INDEX as u16);
+                .set_stack_index(DOUBLE_FAULT_STACK_I as u16);
+            idt[PICInterrupt::Timer as u8].set_handler_fn(handlers::timer)
+                .set_stack_index(TIMER_STACK_I as u16);
         }
 
         idt
@@ -43,9 +52,10 @@ lazy_static! {
     static ref TSS: TaskStateSegment = {
         let mut tss = TaskStateSegment::new();
 
-        let stack_beg = VirtAddr::from_ptr(&raw mut INT_STACK);
-        let stack_end = stack_beg + INT_STACK_SIZE as u64;
-        tss.interrupt_stack_table[INT_STACK_INDEX] = stack_end;
+        tss.interrupt_stack_table[DOUBLE_FAULT_STACK_I] = 
+            stack_end(&raw const DOUBLE_FAULT_STACK);
+        tss.interrupt_stack_table[TIMER_STACK_I] = 
+            stack_end(&raw const TIMER_STACK);
 
         tss
     };
