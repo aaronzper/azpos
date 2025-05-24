@@ -50,16 +50,14 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     set_logger(t);
     println!("Hello world!");
 
-    init_interrupts();
-
     let mut sched_lock = SCHEDULER.lock();
-
-    for _ in 0..20 {
+    for _ in 0..10 {
         sched_lock.add_thread(Thread::new_kthread(thread));
     }
-
     let sched_ptr = &raw mut sched_lock;
     drop(sched_lock); // Drop so not locked forever
+
+    init_interrupts();
 
     // Unsafe since we're using the unlocked scheduler (plus cause `start()`
     // itself is unsafe) but since we're the only "thread" its fine so no data

@@ -91,6 +91,10 @@ impl Scheduler {
     /// allowing the scheduler to save it to the old thread and update it
     /// with that of the new one.
     pub unsafe fn schedule(&mut self, state: &mut CpuState) {
+        if self.currently_running.is_none() {
+            return;
+        }
+
         let new_id = self.runnable.iter()
             .min_by(|id_a, id_b| {
                 let t_a = self.get_thread(**id_a).unwrap();
