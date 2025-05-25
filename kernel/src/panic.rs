@@ -1,6 +1,6 @@
 use core::panic::PanicInfo;
 
-use crate::{devices::fb::RgbPixel, logger::{logger_initialized, set_fg_color}, println};
+use crate::{devices::fb::RgbPixel, logger::{logger_initialized, set_fg_color}, println, scheduling::SCHEDULER};
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -9,6 +9,11 @@ fn panic(info: &PanicInfo) -> ! {
     }
 
     println!("\n!!! KERNEL PANIC !!!");
+    if let Some(sched) = SCHEDULER.try_lock() {
+        if let Some(tid) = sched.currently_running() {
+            println!("From thread {}", tid);
+        }
+    }
     println!("{}", info);
 
     loop {}
