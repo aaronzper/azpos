@@ -69,7 +69,7 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
 fn thread() {
     let id = interrupts::without_interrupts(|| {
-       SCHEDULER.lock().currently_running()
+       SCHEDULER.lock().currently_running().unwrap()
     });
     loop {
         println!("Hi from thread {}", id);

@@ -53,10 +53,8 @@ impl Scheduler {
     }
 
     /// Returns the ID of the currently running thread.
-    ///
-    /// Panics if the scheduler hasnt been started
-    pub fn currently_running(&self) -> ThreadID {
-        self.currently_running.expect("Scheduler not started!")
+    pub fn currently_running(&self) -> Option<ThreadID> {
+        self.currently_running
     }
 
     /// Starts the scheduler by running a thread! This should only be run at the
@@ -113,7 +111,7 @@ impl Scheduler {
             .cloned()
             .expect("No threads to run!");
 
-        let old_id = self.currently_running();
+        let old_id = self.currently_running().unwrap();
         let old_t = self.get_thread_mut(old_id).unwrap();
         old_t.state = state.clone();
 
