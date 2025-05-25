@@ -18,14 +18,14 @@ macro_rules! println {
 
 #[doc(hidden)]
 pub fn _log(args: core::fmt::Arguments) {
-    let mut serial_lock = loop {
-        match SERIAL.try_lock() {
-            Some(x) => break x,
-            None => kthread_yield(),
-        }
-    };
-
     without_interrupts(|| {
+        let mut serial_lock = loop {
+            match SERIAL.try_lock() {
+                Some(x) => break x,
+                None => kthread_yield(),
+            }
+        };
+
         serial_lock.write_fmt(args).unwrap();
 
         let mut logger_lock = LOGGER.lock();
