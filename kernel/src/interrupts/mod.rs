@@ -74,8 +74,13 @@ lazy_static! {
 }
 
 /// Enables hardware interrupts
-fn enable_interrupts() {
+pub fn enable_interrupts() {
     x86_64::instructions::interrupts::enable();
+}
+
+/// Disables hardware interrupts
+pub fn disable_interrupts() {
+    x86_64::instructions::interrupts::disable();
 }
 
 /// Put the CPU to sleep until next interrupt

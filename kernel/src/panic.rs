@@ -1,9 +1,11 @@
 use core::panic::PanicInfo;
 
-use crate::{devices::fb::RgbPixel, logger::{logger_initialized, set_fg_color}, println, scheduling::SCHEDULER};
+use crate::{devices::fb::RgbPixel, interrupts::disable_interrupts, logger::{logger_initialized, set_fg_color}, println, scheduling::SCHEDULER};
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
+    disable_interrupts();
+
     if logger_initialized() {
         set_fg_color(RgbPixel { red: 0xFF, green: 0, blue: 0 });
     }
@@ -16,5 +18,7 @@ fn panic(info: &PanicInfo) -> ! {
     }
     println!("{}", info);
 
-    loop {}
+    loop {
+        x86_64::instructions::hlt();
+    }
 }
