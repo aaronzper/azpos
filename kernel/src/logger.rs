@@ -1,9 +1,8 @@
 use core::fmt::Write;
-use spin::Mutex;
-use crate::{devices::{fb::FbTerminal, serial::SerialPort}, interrupts::without_interrupts, scheduling::kthread_yield};
+use crate::{devices::{fb::FbTerminal, serial::SerialPort}, interrupts::without_interrupts, scheduling::threads::mutex::KMutex};
 
-static LOGGER: Mutex<Option<FbTerminal>> = Mutex::new(None);
-static SERIAL: Mutex<SerialPort> = Mutex::new(SerialPort::new());
+static LOGGER: KMutex<Option<FbTerminal>> = KMutex::new(None);
+static SERIAL: KMutex<SerialPort> = KMutex::new(SerialPort::new());
 
 #[macro_export]
 macro_rules! print {
@@ -18,25 +17,17 @@ macro_rules! println {
 
 #[doc(hidden)]
 pub fn _log(args: core::fmt::Arguments) {
-    without_interrupts(|| {
-        let mut serial_lock = loop {
-            match SERIAL.try_lock() {
-                Some(x) => break x,
-                None => kthread_yield(),
-            }
-        };
+    let mut serial_lock = SERIAL.lock();
+    serial_lock.write_fmt(args).unwrap();
 
-        serial_lock.write_fmt(args).unwrap();
-
-        let mut logger_lock = LOGGER.lock();
-        match logger_lock.as_mut() {
-            Some(l) => {
-                l.write_fmt(args).unwrap();
-                l.flush();
-            },
-            None => ()
-        }
-    });
+    let mut logger_lock = LOGGER.lock();
+    match logger_lock.as_mut() {
+        Some(l) => {
+            l.write_fmt(args).unwrap();
+            l.flush();
+        },
+        None => ()
+    }
 }
 
 // Temporary until I get to ANSII escape codes lol

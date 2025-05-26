@@ -78,6 +78,5 @@ fn thread() {
         }
 
         println!("{}:\t{}", id, sum);
-        kthread_yield();
     }
 }

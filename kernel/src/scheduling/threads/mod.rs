@@ -3,6 +3,8 @@ use lazy_static::lazy_static;
 use spin::RwLock;
 
 pub mod state;
+pub mod mutex;
+
 mod thread;
 pub use thread::{ThreadID, Thread};
 

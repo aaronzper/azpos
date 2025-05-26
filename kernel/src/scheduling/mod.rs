@@ -120,6 +120,34 @@ impl Scheduler {
         new_t.add_run();
         *state = new_t.state.clone();
     }
+
+    /// Blocks the given thread and returns a `BlockedThread`.
+    ///
+    /// Panics if the thread isnt currently runnable
+    pub fn block_thread(&mut self, thread: ThreadID) -> BlockedThread {
+        match self.runnable.iter().position(|tid| *tid == thread) {
+            Some(i) => self.runnable.remove(i),
+            None => panic!("Thread {} isn't currently runnable!", thread),
+        };
+
+        BlockedThread { thread }
+    }
+
+    fn unblock_thread(&mut self, thread: ThreadID) {
+        self.runnable.push(thread);
+    }
+}
+
+/// An object representing ownership over a blocked thread. Unblocks the thread
+/// when it goes out of scope.
+pub struct BlockedThread {
+    thread: ThreadID,
+}
+
+impl Drop for BlockedThread {
+    fn drop(&mut self) {
+        SCHEDULER.lock().unblock_thread(self.thread);
+    }
 }
 
 /// Yields control back to the scheduler
