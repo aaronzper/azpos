@@ -6,7 +6,7 @@
 extern crate alloc;
 
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
-use devices::{fb::{FbTerminal, Framebuffer}, pic::PICInterrupt};
+use devices::{fb::{FbTerminal, Framebuffer}, keyboard::keyboard_listener, pic::PICInterrupt};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
@@ -51,6 +51,8 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     println!("Hello world!");
 
     let mut sched_lock = SCHEDULER.lock();
+    sched_lock.add_thread(Thread::new_kthread(keyboard_listener));
+
     for _ in 0..20 {
         sched_lock.add_thread(Thread::new_kthread(thread));
     }

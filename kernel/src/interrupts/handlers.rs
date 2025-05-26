@@ -2,7 +2,7 @@ use core::arch::global_asm;
 
 use x86_64::structures::idt::InterruptStackFrame;
 
-use crate::{devices::{keyboard::KEYBOARD, pic::PICInterrupt}, scheduling::{threads::state::CpuState, SCHEDULER}};
+use crate::{devices::{keyboard::{KEYBOARD, SCANCODES}, pic::PICInterrupt}, scheduling::{threads::state::CpuState, SCHEDULER}};
 
 use super::PIC;
 
@@ -29,7 +29,7 @@ pub extern "C" fn timer_inner(s: &mut CpuState) {
 
 pub extern "x86-interrupt" fn keyboard(_: InterruptStackFrame) {
     match KEYBOARD.lock().read_scancode() {
-        Some(c) => println!("{:?}", c),
+        Some(c) => SCANCODES.lock().push(c),
         None => (),
     };
     PIC.lock().end_interrupt(PICInterrupt::Keyboard);

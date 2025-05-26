@@ -1,5 +1,5 @@
 #[non_exhaustive]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 /// A PS/2 keyboard scancode
 pub enum Scancode {
     Char(char),
