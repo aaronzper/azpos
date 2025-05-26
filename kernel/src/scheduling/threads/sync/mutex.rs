@@ -83,6 +83,11 @@ impl<'a, T> KMutexGuard<'a, T> {
             mutex,
         }
     }
+
+    /// Consumes self and returns the inner mutex, unlocking it in the process
+    pub(super) fn into_inner_mutex(self) -> &'a KMutex<T> {
+        self.mutex
+    }
 }
 
 impl<T> Drop for KMutexGuard<'_, T> {
