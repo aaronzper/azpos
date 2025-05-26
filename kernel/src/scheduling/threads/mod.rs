@@ -1,9 +1,8 @@
 use alloc::collections::btree_map::BTreeMap;
-use lazy_static::lazy_static;
-use spin::RwLock;
 
 pub mod state;
-pub mod mutex;
+/// Kernel thread synchronisation primitives
+pub mod sync;
 
 mod thread;
 pub use thread::{ThreadID, Thread};

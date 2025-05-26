@@ -1,5 +1,5 @@
 use core::fmt::Write;
-use crate::{devices::{fb::FbTerminal, serial::SerialPort}, interrupts::without_interrupts, scheduling::threads::mutex::KMutex};
+use crate::{devices::{fb::FbTerminal, serial::SerialPort}, scheduling::threads::sync::KMutex};
 
 static LOGGER: KMutex<Option<FbTerminal>> = KMutex::new(None);
 static SERIAL: KMutex<SerialPort> = KMutex::new(SerialPort::new());
