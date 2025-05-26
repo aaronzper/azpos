@@ -53,9 +53,6 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     let mut sched_lock = SCHEDULER.lock();
     sched_lock.add_thread(Thread::new_kthread(keyboard_listener));
 
-    for _ in 0..20 {
-        sched_lock.add_thread(Thread::new_kthread(thread));
-    }
     let sched_ptr = &raw mut sched_lock;
     drop(sched_lock); // Drop so not locked forever
 
@@ -66,19 +63,5 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     // races
     unsafe { 
         (*sched_ptr).start();
-    }
-}
-
-fn thread() {
-    let id = interrupts::without_interrupts(|| {
-       SCHEDULER.lock().currently_running().unwrap()
-    });
-    loop {
-        let mut sum: u128 = 0;
-        for i in 0..100000 {
-            sum += i;
-        }
-
-        println!("{}:\t{}", id, sum);
     }
 }

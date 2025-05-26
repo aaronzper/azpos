@@ -14,6 +14,12 @@ lazy_static! {
     pub static ref SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler::new());
 }
 
+fn wait_loop() {
+    loop {
+        crate::interrupts::wait();
+    }
+}
+
 /// The main scheduler, in charge of scheduling kernel and user threads
 pub struct Scheduler {
     /// A map owning all threads and allocating their IDs
@@ -21,8 +27,11 @@ pub struct Scheduler {
     /// A list of all runable threads
     runnable: Vec<ThreadID>,
     /// The current thread that is running. If this is `None`, the scheduler
-    /// hasnt been started yet
+    /// hasnt been started yet or is idling
     currently_running: Option<ThreadID>,
+    /// A dummy wait thread that just idles. Used if there are no other threads
+    /// to run
+    idle_thread: Thread
 }
 
 impl Scheduler {
@@ -32,6 +41,7 @@ impl Scheduler {
             threads: ThreadTable::new(),
             runnable: Vec::new(),
             currently_running: None,
+            idle_thread: Thread::new_kthread(wait_loop),
         }
     }
     
@@ -89,10 +99,6 @@ impl Scheduler {
     /// allowing the scheduler to save it to the old thread and update it
     /// with that of the new one.
     pub unsafe fn schedule(&mut self, state: &mut CpuState) {
-        if self.currently_running.is_none() {
-            return;
-        }
-
         let new_id = self.runnable.iter()
             .min_by(|id_a, id_b| {
                 let t_a = self.get_thread(**id_a).unwrap();
@@ -108,15 +114,28 @@ impl Scheduler {
                     Ordering::Greater
                 }
             })
-            .cloned()
-            .expect("No threads to run!");
+            .cloned();
 
-        let old_id = self.currently_running().unwrap();
-        let old_t = self.get_thread_mut(old_id).unwrap();
+        let old_t = match self.currently_running() {
+            Some(id) => {
+                self.get_thread_mut(id).unwrap()
+            },
+            None => {
+                &mut self.idle_thread
+            }
+        };
         old_t.state = state.clone();
 
-        self.currently_running = Some(new_id);
-        let new_t = self.get_thread_mut(new_id).unwrap();
+        let new_t = match new_id {
+            Some(id) => {
+                self.currently_running = Some(id);
+                self.get_thread_mut(id).unwrap()
+            },
+            None => {
+                self.currently_running = None;
+                &mut self.idle_thread
+            },
+        };
         new_t.add_run();
         *state = new_t.state.clone();
     }
