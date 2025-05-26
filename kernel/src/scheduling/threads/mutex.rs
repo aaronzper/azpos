@@ -4,9 +4,7 @@ use spin::Mutex;
 
 use crate::scheduling::{kthread_yield, BlockedThread, SCHEDULER};
 
-/// A kernel mutex that:
-/// 1. Disables interrupts when locked
-/// 2. Blocks until able to acquire the lock
+/// A kernel mutex that blocks until able to acquire the lock
 pub struct KMutex<T> {
     value: UnsafeCell<T>,
     locked: AtomicBool,
@@ -25,6 +23,7 @@ impl<T> KMutex<T> {
         }
     }
 
+    /// Attempts to acquire the lock
     pub fn try_lock<'a>(&'a self) -> Option<KMutexGuard<'a, T>> {
         match self.locked.compare_exchange(
             false, 
@@ -48,6 +47,8 @@ impl<T> KMutex<T> {
         }
     }
 
+    /// Aqcuires the lock, blocking and yielding to the scheduler until
+    /// its available
     pub fn lock<'a>(&'a self) -> KMutexGuard<'a, T> {
         loop {
             match self.try_lock() {
