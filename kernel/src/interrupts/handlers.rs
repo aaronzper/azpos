@@ -21,8 +21,8 @@ pub extern "x86-interrupt" fn double_fault(stack: InterruptStackFrame, error: u6
 
 #[unsafe(no_mangle)]
 pub extern "C" fn timer_inner(s: &mut CpuState) {
-    unsafe {
-        SCHEDULER.lock().schedule(s);
+    if let Some(mut guard) = SCHEDULER.try_lock() {
+        unsafe { guard.schedule(s); }
     }
     PIC.lock().end_interrupt(PICInterrupt::Timer);
 }
