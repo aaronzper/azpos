@@ -1,3 +1,5 @@
+use x86_64::{instructions::port::{PortGeneric, PortReadOnly, PortWriteOnly}, structures::port::{PortRead, PortWrite}};
+
 /// Framebuffer driver
 pub mod fb;
 /// Serial port driver
@@ -8,3 +10,15 @@ pub mod pic;
 pub mod keyboard;
 /// Storage devices
 pub mod storage;
+/// PCI bus driver
+pub mod pci;
+
+pub fn read_port<T: PortRead>(port: u16) -> T {
+    let mut p: PortReadOnly<T> = PortGeneric::new(port);
+    unsafe { p.read() }
+}
+
+pub fn write_port<T: PortWrite>(port: u16, value: T) {
+    let mut p: PortWriteOnly<T> = PortGeneric::new(port);
+    unsafe { p.write(value) }
+}
