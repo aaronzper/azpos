@@ -6,7 +6,7 @@
 extern crate alloc;
 
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
-use devices::{fb::{FbTerminal, Framebuffer}, keyboard::keyboard_listener, pic::PICInterrupt, storage::ata::ATAController};
+use devices::{fb::{FbTerminal, Framebuffer}, keyboard::keyboard_listener};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
@@ -55,9 +55,6 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     let sched_ptr = &raw mut sched_lock;
     drop(sched_lock); // Drop so not locked forever
-
-    let ata = ATAController::new();
-    println!("{:#?}", ata);
 
     init_interrupts();
 
