@@ -6,3 +6,5 @@ pub mod serial;
 pub mod pic;
 /// PS/2 keyboard driver
 pub mod keyboard;
+/// Storage devices
+pub mod storage;

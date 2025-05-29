@@ -21,7 +21,8 @@ fn main() {
     } else {
         bios_path
     };
-    cmd.arg("-drive").arg(format!("format=raw,file={path}"));
+    cmd.arg("-drive")
+        .arg(format!("format=raw,file={path},if=ide,media=disk,index=0,"));
 
     if gdb {
         cmd.arg("-s").arg("-S");
