@@ -6,7 +6,7 @@
 extern crate alloc;
 
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
-use devices::{fb::{FbTerminal, Framebuffer}, keyboard::keyboard_listener, pci::PCIController};
+use devices::{fb::{FbTerminal, Framebuffer}, keyboard::keyboard_listener, pci::{PCIController, PCIDeviceClass}, storage::ahci::{AHCIController, SATA_PCI_SUBCLASS}};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
@@ -58,6 +58,14 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     let pci = PCIController::new();
     println!("{:#?}", pci);
+    let ahci_pci = pci.devices().iter()
+        .find(|x| {
+            let (c, sc) = x.class();
+            c == PCIDeviceClass::MassStorageCtrl && sc == SATA_PCI_SUBCLASS
+        })
+        .expect("No PCI storage device");
+    let ahci = AHCIController::new(ahci_pci);
+    println!("{:#?}", ahci);
 
     init_interrupts();
 

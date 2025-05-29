@@ -22,6 +22,7 @@ pub const PAGE_SIZE: u64 = 0x1000;
 
 static mut PHYS_MAP_ADDR: VirtAddr = VirtAddr::new(0);
 static mut PHYS_SIZE: u64 = 0;
+static mut PHYS_MAP_SIZE: u64 = 0;
 
 static PAGE_ALLOCATOR: Mutex<Option<PageAllocator>> = Mutex::new(None);
 #[global_allocator]
@@ -47,11 +48,11 @@ fn physical_map_addr() -> VirtAddr {
 
 /// Resolves a given physical address into the virtual address that maps to it.
 /// Used for directly accessing physical memory.
-fn resolve_phys_addr(pa: PhysAddr) -> Option<VirtAddr> {
-    let sz = get_phys_size();
+pub fn resolve_phys_addr(pa: PhysAddr) -> Option<VirtAddr> {
+    let sz = unsafe { PHYS_MAP_SIZE };
     if pa.as_u64() >= sz {
         panic!(
-            "Physical address {:#X} is past the physical memory size {:#X}",
+            "Physical address {:#X} is past the physical memory map size {:#X}",
             pa.as_u64(), sz);
     } else {
         Some(VirtAddr::new(physical_map_addr().as_u64() + pa.as_u64()))
@@ -78,13 +79,17 @@ fn find_usable_virtual_space() -> VirtAddr {
 /// Initializes the memory subsystem by setting up the physical page allocator
 /// and the heap allocator
 pub fn init_memory(pmap_va: u64, p_regions: &MemoryRegions) {
-    let last_region = p_regions.iter()
+    let last_usable_region = p_regions.iter()
         .filter(|r| r.kind == MemoryRegionKind::Usable)
+        .last().unwrap();
+
+    let last_region = p_regions.iter()
         .last().unwrap();
 
     unsafe {
         PHYS_MAP_ADDR = VirtAddr::new(pmap_va);
-        PHYS_SIZE = last_region.end;
+        PHYS_MAP_SIZE = last_region.end;
+        PHYS_SIZE = last_usable_region.end;
     }
 
     let usable_start = find_usable_virtual_space().as_u64();

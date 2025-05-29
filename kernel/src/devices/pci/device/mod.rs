@@ -2,7 +2,7 @@ use class::PCIDeviceClass;
 
 use super::config::read_config;
 
-mod class;
+pub mod class;
 
 #[derive(Debug)]
 pub struct PCIDevice {
@@ -17,6 +17,10 @@ impl PCIDevice {
     pub fn new(bus: u8, device: u8, function: u8) -> Option<Self> {
         if device > 0b11111 {
             panic!("Device number must be 5 bits (< 32)");
+        }
+
+        if function > 0b111 {
+            panic!("Function number must be 3 bits (< 8)");
         }
 
         let mut dev = Self { 
@@ -36,11 +40,19 @@ impl PCIDevice {
         }
     }
 
-    fn read_config(&self, word: u8) -> u32 {
+    /// Reads a specific 32-bit word from the config space of the device at the
+    /// given index. 
+    pub fn read_config(&self, word: u8) -> u32 {
         read_config(self.bus, self.device, self.function, word)
     }
 
+    /// Returns the vendor ID of the PCI device
     pub fn vendor_id(&self) -> u16 {
         self.read_config(0) as u16
+    }
+
+    /// Returns the class and subclass of the device
+    pub fn class(&self) -> (PCIDeviceClass, u8) {
+        (self.class, self.subclass)
     }
 }

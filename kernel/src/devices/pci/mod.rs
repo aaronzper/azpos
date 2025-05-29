@@ -1,5 +1,4 @@
 use alloc::{boxed::Box, vec::Vec};
-use device::PCIDevice;
 
 /// Utilities for reading from and writing to the PCI configuration space for
 /// PCI devices.
@@ -11,6 +10,7 @@ use device::PCIDevice;
 ///    space. Must be below 64, as that's how many words there are.
 mod config;
 mod device;
+pub use device::{PCIDevice, class::PCIDeviceClass};
 
 #[derive(Debug)]
 pub struct PCIController {
@@ -33,5 +33,10 @@ impl PCIController {
         Self {
             devices: devices.into(),
         }
+    }
+
+    /// Returns a slice of the PCI devices on the system
+    pub fn devices(&self) -> &[PCIDevice] {
+        &self.devices
     }
 }
