@@ -1,3 +1,5 @@
+use x86_64::PhysAddr;
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct AHCIBaseMemoryReg {
@@ -23,8 +25,8 @@ pub struct AHCIBaseMemoryReg {
 #[repr(C)]
 #[derive(Debug)]
 pub struct AHCIPort {
-    pub cmd_list_base_addr: u64,
-    pub fis_base_addr: u64,
+    pub cmd_list_base_addr: PhysAddr,
+    pub fis_base_addr: PhysAddr,
 
     pub int_status: u32,
     pub int_enable: u32,

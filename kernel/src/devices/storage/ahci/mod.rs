@@ -7,8 +7,8 @@ use x86_64::{PhysAddr, VirtAddr};
 
 use crate::{devices::pci::{PCIDevice, PCIDeviceClass}, memory::{resolve_phys_addr, resolve_virt_addr, set_cacheable, PAGE_SIZE}};
 
-/// AHCI Base Memory Register
-mod bar;
+/// AHCI Memory-Mapped IO structures
+mod mmio;
 
 pub const SATA_PCI_SUBCLASS: u8 = 0x6;
 const PCI_BAR_5: u8 = 0x9;
