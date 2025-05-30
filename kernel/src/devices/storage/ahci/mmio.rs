@@ -219,7 +219,8 @@ impl PRDTEntry {
             panic!("Byte count must be even");
         }
 
-        let upper = self.byte_count & (((1 << 10) - 1) << 22);
+        let upper = read_bitfield::<u32, u32>(self.byte_count, 22, 32) << 22;
+
         // The count value is 1 less than the actual number of bytes, see spec
         self.byte_count = upper | (count - 1); 
     }
