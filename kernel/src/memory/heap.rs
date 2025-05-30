@@ -1,11 +1,11 @@
 use core::{alloc::{GlobalAlloc, Layout}, ptr::null_mut, sync::atomic::Ordering};
 
 use spin::Mutex;
-use x86_64::{structures::paging::{FrameAllocator, Mapper, Page, PageTableFlags, Translate}, VirtAddr};
+use x86_64::{structures::paging::{Page, PageTableFlags}, VirtAddr};
 
-use crate::memory::{paging::current_pt, PAGE_ALLOCATOR};
+use crate::memory::PAGE_ALLOCATOR;
 
-use super::stacks::{KERNEL_STACK_ALLOCATOR, STACKS_BOTTOM};
+use super::stacks::STACKS_BOTTOM;
 
 struct AllocatorInner {
     heap_start: VirtAddr,

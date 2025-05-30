@@ -1,6 +1,6 @@
-use x86_64::{registers::rflags::RFlags, structures::idt::InterruptStackFrameValue, VirtAddr};
+use x86_64::VirtAddr;
 
-use crate::{interrupts::GDT, memory::stacks::{KThreadStack, KERNEL_STACK_ALLOCATOR}};
+use crate::memory::stacks::{KThreadStack, KERNEL_STACK_ALLOCATOR};
 
 use super::state::CpuState;
 

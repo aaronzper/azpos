@@ -10,7 +10,7 @@ use devices::{fb::{FbTerminal, Framebuffer}, keyboard::keyboard_listener, pci::{
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
-use scheduling::{kthread_yield, threads::Thread, SCHEDULER};
+use scheduling::{threads::Thread, SCHEDULER};
 
 #[macro_use]
 /// Global kernel logger

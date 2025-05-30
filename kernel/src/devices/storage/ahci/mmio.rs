@@ -1,5 +1,5 @@
 use alloc::slice;
-use bitvec::{field::BitField, order::Lsb0, store::BitStore, view::BitView};
+use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use x86_64::PhysAddr;
 
 use crate::memory::resolve_phys_addr;

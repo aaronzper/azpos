@@ -2,7 +2,7 @@ use core::cmp::Ordering;
 
 use alloc::vec::Vec;
 use lazy_static::lazy_static;
-use spin::{Mutex, MutexGuard};
+use spin::Mutex;
 use threads::{state::CpuState, Thread, ThreadID, ThreadTable};
 
 use crate::devices::pic::PICInterrupt;

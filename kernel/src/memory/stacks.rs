@@ -2,7 +2,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use bitvec::vec::BitVec;
 use lazy_static::lazy_static;
-use x86_64::{structures::paging::{mapper::CleanUp, FrameDeallocator, Mapper, Page, PageTableFlags, PhysFrame, Translate}, VirtAddr};
+use x86_64::{structures::paging::{mapper::CleanUp, FrameDeallocator, Mapper, Page, PageTableFlags}, VirtAddr};
 use spin::Mutex;
 
 use super::{paging::{current_pt, SizedPage}, PAGE_ALLOCATOR, PAGE_SIZE};

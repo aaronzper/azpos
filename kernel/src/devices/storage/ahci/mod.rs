@@ -1,8 +1,8 @@
-use alloc::{alloc::alloc, boxed::Box, vec::Vec};
+use alloc::boxed::Box;
 use error::AHCIError;
-use mmio::{AHCIBaseMemoryReg, AHCIPort};
+use mmio::AHCIBaseMemoryReg;
 use bitvec::{order::Lsb0, view::BitView};
-use x86_64::{PhysAddr, VirtAddr};
+use x86_64::PhysAddr;
 
 use crate::{devices::pci::{PCIDevice, PCIDeviceClass}, memory::resolve_phys_addr};
 

@@ -4,7 +4,7 @@ use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use heap::HeapAllocator;
 use paging::{current_pt, PageAllocator, PageRefCount};
 use spin::Mutex;
-use x86_64::{structures::paging::{PageTableFlags, Translate}, PhysAddr, VirtAddr};
+use x86_64::{structures::paging::PageTableFlags, PhysAddr, VirtAddr};
 
 
 /// Physical page allocation and management
