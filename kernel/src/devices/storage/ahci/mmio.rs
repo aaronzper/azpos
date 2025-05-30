@@ -1,4 +1,5 @@
 use alloc::slice;
+use bitvec::{field::BitField, order::Lsb0, store::BitStore, view::BitView};
 use x86_64::PhysAddr;
 
 use crate::memory::resolve_phys_addr;
@@ -27,6 +28,25 @@ pub struct AHCIBaseMemoryReg {
     pub ports: [AHCIPort; 32],
 }
 
+impl AHCIBaseMemoryReg {
+    /// Does the HBA support 64-bit addressing?
+    pub fn supports_64bit_addr(&self) -> bool {
+        self.host_capabilities.view_bits::<Lsb0>()[31]
+    }
+
+    /// Enable or disable interrupts, HBA-wide
+    pub fn set_interrupts(&mut self, ints: bool) {
+        self.global_host_control.view_bits_mut::<Lsb0>().set(1, ints);
+    }
+
+    /// Returns the number of commands supported by the HBA
+    pub fn num_supported_commands(&self) -> u8 {
+        let bits = self.host_capabilities.view_bits::<Lsb0>().get(8..13)
+            .unwrap();
+        bits.load_le::<u8>() + 1 // Raw value "0" really means 1
+    }
+}
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct AHCIPort {
@@ -51,12 +71,41 @@ pub struct AHCIPort {
 }
 
 impl AHCIPort {
-    pub fn command_list(&self, n_commands: u8) -> &mut [AHCICommandHeader] {
+    /// Returns a slice to the port's command list, given a reference to the HBA
+    /// base memory register (needed to determine the size of the list)
+    pub fn command_list(&self, hba: &AHCIBaseMemoryReg) -> &mut [AHCICommandHeader] {
         let va = resolve_phys_addr(self.cmd_list_base_addr)
             .expect("Command List unmapped!");
         let ptr = va.as_mut_ptr() as *mut AHCICommandHeader;
-        unsafe { slice::from_raw_parts_mut(ptr, n_commands as usize) }
+        let n_commands = hba.num_supported_commands() as usize;
+        unsafe { slice::from_raw_parts_mut(ptr, n_commands) }
     }
+
+    pub fn fis(&self) -> &ReceivedFIS {
+        let va = resolve_phys_addr(self.cmd_list_base_addr)
+            .expect("Received FIS unmapped!");
+        let ptr = va.as_mut_ptr() as *const ReceivedFIS;
+        unsafe { ptr.as_ref().unwrap() }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct ReceivedFIS {
+    pub dma_setup: [u8; 28],
+    padding_0: [u8; 4],
+
+    pub pio_setup: [u8; 20],
+    padding_1: [u8; 12],
+
+    pub register_d2h: [u8; 20],
+    padding_2: [u8; 4],
+
+    pub set_device_bits: [u8; 8],
+
+    pub unknown_fis: [u8; 64],
+
+    reserved: [u8; 0x60],
 }
 
 #[repr(C)]
@@ -64,8 +113,10 @@ impl AHCIPort {
 pub struct AHCICommandHeader {
     pub flags: u16,
 
-    pub prdt_len: u16, // Phys regional desc table len in entries,
-    pub prd_bytes_trans: u32, // PRD byte count transferred
+    /// Number of Physical Regional Descriptor Table entries
+    pub prdt_entries: u16,
+    /// Physical regional descriptor byte count transferred
+    pub prd_bytes_trans: u32,
     
     pub command_table_addr: PhysAddr,
 
@@ -84,14 +135,15 @@ impl AHCICommandHeader {
 #[repr(C)]
 #[repr(align(128))]
 pub struct AHCICommandTable {
-    pub fis: [u8; 64],
+    pub command_fis: [u8; 64],
 
     /// Could also be 12 bytes, 13-16 are 0(?)
     pub atapi_command: u16, 
 
     reserved: [u8; 48],
 
-    prdt: [PRDTEntry; 0xFFFF], // May not be this many
+    /// Up to 0xFFFF of these
+    prdt: [PRDTEntry; 0xFFFF],
 }
 
 impl AHCICommandTable {
@@ -114,16 +166,36 @@ pub struct PRDTEntry {
 
 impl PRDTEntry {    
     pub fn get_byte_count(&self) -> u32 {
-        self.byte_count & ((1 << 22) - 1)
+        let raw_count = self.byte_count & ((1 << 22) - 1);
+
+        // Per spec (see comment to other function), byte count '1' actually
+        // means 2 bytes. God help me
+        raw_count + 1 
     }
 
+    /// *See page 43 of the Intel AHCI 1.3.1 spec for the absolute bullshit going
+    /// on in here*
+    ///
+    /// Parameters (panics if not met):
+    /// - Byte count must not be zero
+    /// - Byte count must be even
+    /// - Byte count must be at most 4MiB (0x400000)
     pub fn set_byte_count(&mut self, count: u32) {
-        if count >= 1 << 22 {
+        if count > 1 << 22 {
             panic!("Byte count must be 22-bit");
         }
-        
+
+        if count == 0 {
+            panic!("Byte count cannot be 0");
+        }
+
+        if count % 2 != 0 {
+            panic!("Byte count must be even");
+        }
+
         let upper = self.byte_count & (((1 << 10) - 1) << 22);
-        self.byte_count = upper | count;
+        // The count value is 1 less than the actual number of bytes, see spec
+        self.byte_count = upper | (count - 1); 
     }
 
     pub fn set_int_flag(&mut self, int: bool) {

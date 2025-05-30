@@ -64,8 +64,7 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
             c == PCIDeviceClass::MassStorageCtrl && sc == SATA_PCI_SUBCLASS
         })
         .expect("No PCI storage device");
-    let ahci = AHCIController::new(ahci_pci);
-    println!("{:#?}", ahci);
+    let ahci = AHCIController::new(ahci_pci).unwrap();
 
     init_interrupts();
 
