@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(new_zeroed_alloc)]
 #![feature(abi_x86_interrupt)]
+#![allow(dead_code)]
 
 extern crate alloc;
 
