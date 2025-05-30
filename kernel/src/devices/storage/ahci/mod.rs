@@ -1,14 +1,14 @@
-use core::alloc::Layout;
-
 use alloc::{alloc::alloc, boxed::Box, vec::Vec};
-use bar::{AHCIBaseMemoryReg, AHCIPort};
+use mmio::{AHCIBaseMemoryReg, AHCIPort};
 use bitvec::{order::Lsb0, view::BitView};
 use x86_64::{PhysAddr, VirtAddr};
 
-use crate::{devices::pci::{PCIDevice, PCIDeviceClass}, memory::{resolve_phys_addr, resolve_virt_addr, set_cacheable, PAGE_SIZE}};
+use crate::{devices::pci::{PCIDevice, PCIDeviceClass}, memory::resolve_phys_addr};
 
 /// AHCI Memory-Mapped IO structures
 mod mmio;
+/// AHCI device types
+mod types;
 
 pub const SATA_PCI_SUBCLASS: u8 = 0x6;
 const PCI_BAR_5: u8 = 0x9;
@@ -16,7 +16,7 @@ const PCI_BAR_5: u8 = 0x9;
 #[derive(Debug)]
 pub struct AHCIController {
     base_mem_register: &'static mut AHCIBaseMemoryReg,
-    good_ports: Box<[usize]>
+    good_ports: Box<[usize]>,
 }
 
 impl AHCIController {
