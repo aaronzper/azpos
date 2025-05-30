@@ -40,18 +40,19 @@ impl AHCIController {
             return Err(AHCIError::DoesntSupport64BitAddr);
         }
 
-        bmr.set_interrupts(true);
+        bmr.set_interrupts(false);
 
         let good_ports: Box<[usize]> = bmr.port_implemented.view_bits::<Lsb0>()
             .iter_ones()
+            .filter(|i| bmr.ports[*i].device_detected())
             .collect();
 
         for p_i in &good_ports {
             let port = &bmr.ports[*p_i];
-            println!("{:#?}", port);
-            println!("{:#?}", port.command_list(bmr));
+            println!("Detected a {:?} AHCI drive", port.signature);
         }
 
+        bmr.set_interrupts(true);
         Ok(Self {
             base_mem_register: bmr,
             good_ports,

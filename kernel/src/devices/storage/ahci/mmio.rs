@@ -101,6 +101,18 @@ impl AHCIPort {
         let ptr = va.as_mut_ptr() as *const ReceivedFIS;
         unsafe { ptr.as_ref().unwrap() }
     }
+
+    /// Returns true if sata_status.IPM is active and sata_status.DET is
+    /// detected/connected
+    pub fn device_detected(&self) -> bool {
+        const IPM_ACTIVE: u8 = 0x1;
+        const DET_ACTIVE: u8 = 0x3;
+    
+        let ipm: u8 = read_bitfield(self.sata_status, 8, 12);
+        let det: u8 = read_bitfield(self.sata_status, 0, 4);
+
+        ipm == IPM_ACTIVE && det == DET_ACTIVE
+    }
 }
 
 #[repr(C)]
