@@ -1,3 +1,5 @@
+use core::any::type_name;
+
 use alloc::slice;
 use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use x86_64::PhysAddr;
@@ -5,6 +7,19 @@ use x86_64::PhysAddr;
 use crate::memory::resolve_phys_addr;
 
 use super::types::AHCIDeviceType;
+
+/// Reads the given bitfield from the given raw value. Useful for parsing
+/// MMIO structures. Panics if cant fit into output type.
+fn read_bitfield<I: BitView, O: TryFrom<u64>>(raw: I, from: usize, to: usize) -> O {
+        let bits = raw.view_bits::<Lsb0>().get(from..to).unwrap();
+        let out: u64 = bits.load_le();
+        match out.try_into() {
+            Ok(x) => x,
+            Err(_) => 
+                panic!("Couldn't fit bitfield value {} into {}", 
+                    out, type_name::<O>()),
+        }
+}
 
 #[repr(C)]
 #[derive(Debug)]
@@ -31,7 +46,7 @@ pub struct AHCIBaseMemoryReg {
 impl AHCIBaseMemoryReg {
     /// Does the HBA support 64-bit addressing?
     pub fn supports_64bit_addr(&self) -> bool {
-        self.host_capabilities.view_bits::<Lsb0>()[31]
+        read_bitfield::<u32, u8>(self.host_capabilities, 31, 32) != 0
     }
 
     /// Enable or disable interrupts, HBA-wide
@@ -41,9 +56,8 @@ impl AHCIBaseMemoryReg {
 
     /// Returns the number of commands supported by the HBA
     pub fn num_supported_commands(&self) -> u8 {
-        let bits = self.host_capabilities.view_bits::<Lsb0>().get(8..13)
-            .unwrap();
-        bits.load_le::<u8>() + 1 // Raw value "0" really means 1
+        // Raw value "0" really means 1
+        read_bitfield::<u32, u8>(self.host_capabilities, 8, 13) + 1
     }
 }
 
