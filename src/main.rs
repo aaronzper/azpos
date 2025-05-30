@@ -13,6 +13,7 @@ fn main() {
 
     let mut cmd = std::process::Command::new("qemu-system-x86_64");
     cmd.arg("-m").arg("2G");
+    cmd.arg("-M").arg("q35");
     cmd.arg("-serial").arg("stdio");
 
     let path = if uefi {
@@ -21,8 +22,8 @@ fn main() {
     } else {
         bios_path
     };
-    cmd.arg("-drive")
-        .arg(format!("format=raw,file={path},if=ide,media=disk,index=0,"));
+
+    cmd.arg("-hda").arg(format!("{path}"));
 
     if gdb {
         cmd.arg("-s").arg("-S");
