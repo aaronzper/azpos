@@ -6,7 +6,7 @@ use x86_64::PhysAddr;
 
 use crate::memory::resolve_phys_addr;
 
-use super::types::AHCIDeviceType;
+use super::{types::AHCIDeviceType, PRDT_ENTRIES_PER_COMMAND};
 
 /// Reads the given bitfield from the given raw value. Useful for parsing
 /// MMIO structures. Panics if cant fit into output type.
@@ -169,7 +169,7 @@ pub struct AHCICommandTable {
     reserved: [u8; 48],
 
     /// Up to 0xFFFF of these
-    prdt: [PRDTEntry; 0xFFFF],
+    prdt: [PRDTEntry; PRDT_ENTRIES_PER_COMMAND as usize],
 }
 
 impl AHCICommandTable {
@@ -191,6 +191,10 @@ pub struct PRDTEntry {
 }
 
 impl PRDTEntry {    
+    /// The maximum size, in bytes, of a single PRDT entry's data. Set by AHCI
+    /// spec to be 4MiB.
+    pub const MAX_DATA_SIZE: u32 = 0x400000;
+
     pub fn get_byte_count(&self) -> u32 {
         let raw_count = self.byte_count & ((1 << 22) - 1);
 
@@ -207,7 +211,7 @@ impl PRDTEntry {
     /// - Byte count must be even
     /// - Byte count must be at most 4MiB (0x400000)
     pub fn set_byte_count(&mut self, count: u32) {
-        if count > 1 << 22 {
+        if count > Self::MAX_DATA_SIZE {
             panic!("Byte count must be 22-bit");
         }
 
