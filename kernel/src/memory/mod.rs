@@ -13,6 +13,8 @@ mod paging;
 mod heap;
 /// Stack allocation for kernel and user threads
 pub mod stacks;
+/// Helpers for MMIO-related things
+pub mod mmio;
 
 /// The beginning of the kernel image (and address spave) in Virtual Memory
 pub const KERNEL_START_ADDR: u64 = 0xFFFF_8000_0000_0000;

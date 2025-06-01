@@ -1,5 +1,7 @@
+use core::usize;
+
 use bootloader_api::info::{MemoryRegion, MemoryRegionKind, MemoryRegions};
-use x86_64::{registers::control::Cr3, structures::paging::{frame::PhysFrameRangeInclusive, mapper::MapToError, FrameAllocator, FrameDeallocator, Mapper, OffsetPageTable, Page, PageTableFlags, PhysFrame, Size4KiB}, PhysAddr, VirtAddr};
+use x86_64::{registers::control::Cr3, structures::paging::{frame::{PhysFrameRange, PhysFrameRangeInclusive}, mapper::MapToError, FrameAllocator, FrameDeallocator, Mapper, OffsetPageTable, Page, PageTableFlags, PhysFrame, Size4KiB}, PhysAddr, VirtAddr};
 
 use super::{physical_map_addr, resolve_phys_addr, PAGE_SIZE};
 
@@ -202,6 +204,29 @@ impl<'a> PageAllocator<'a> {
             pt.map_to(page, p_frame, flags, self).unwrap()
         };
         flush.flush();
+    }
+
+    /// Allocates a contiguous range of physical frames of the given
+    /// size, if one exists
+    pub fn alloc_range(&mut self, n_frames: usize) -> Option<PhysFrameRange> {
+        // TODO: Optimize
+        let start_index = self.frame_refcounts
+            .windows(n_frames)
+            .enumerate()
+            .find(|(_, block)| block.iter().all(|c| *c == 0))
+            .map(|(index, _)| index)?;
+        let end_index = start_index + n_frames;
+
+        for i in start_index..end_index {
+            assert!(self.frame_refcounts[i] == 0);
+            self.frame_refcounts[i] = 1;
+        }
+        self.next_alloc = end_index;
+        self.avail_bytes -= PAGE_SIZE as usize * n_frames;
+
+        let from_frame = index_to_frame(start_index);
+        let to_frame = index_to_frame(end_index);
+        Some(PhysFrame::range(from_frame, to_frame))
     }
 }
 
