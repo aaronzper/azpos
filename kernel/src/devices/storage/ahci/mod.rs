@@ -1,7 +1,8 @@
 use core::cmp::min;
-use alloc::{boxed::Box, slice, string::String};
+use alloc::{boxed::Box, slice, string::String, vec::Vec};
+use ata::{ATACommand, ATADriveInfo};
 use error::AHCIError;
-use fis::{ATACommand, FISRegisterH2D};
+use fis::FISRegisterH2D;
 use mmio::{AHCIBaseMemoryReg, AHCICommandTable};
 use bitvec::{order::Lsb0, view::BitView};
 use types::AHCIDeviceType;
@@ -17,6 +18,8 @@ mod types;
 mod error;
 /// SATA Frame Information Structure stuff
 mod fis;
+/// ATA commands + structures
+mod ata;
 
 pub const SATA_PCI_SUBCLASS: u8 = 0x6;
 const PCI_BAR_5: u8 = 0x9;
@@ -115,12 +118,11 @@ impl AHCIController {
             while port.command_busy(0) { }
 
             let data = unsafe { slice::from_raw_parts(buf_ptr, 256) };
-            let drive_name: String = data[27..47].iter()
-                .flat_map(|x| x.to_be_bytes())
-                .map(|x| x as char)
-                .collect();
+            let info = ATADriveInfo::new(data.try_into().unwrap());
+            let mib = (info.sectors() * info.sector_size()) as f32 / (1024.0 * 1024.0);
                 
-            println!("Detected a {:?} AHCI drive: {:?}", port.signature, drive_name.trim_end());
+            println!("Detected a {:.2} MiB {:?} AHCI drive: {:?}", 
+                mib, port.signature, info);
 
             for frame in buf {
                 dealloc_frame(frame);

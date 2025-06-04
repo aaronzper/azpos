@@ -1,5 +1,6 @@
 use alloc::slice;
 use modular_bitfield::prelude::*;
+use super::ata::ATACommand;
 
 #[derive(Copy, Clone, Debug)]
 #[derive(Specifier)]
@@ -13,15 +14,6 @@ pub enum FISType {
     BISTActivate    = 0x58,
     PIOSetup        = 0x5F,
     SetDeviceBits   = 0xA1,
-}
-
-#[derive(Copy, Clone, Debug)]
-#[non_exhaustive]
-#[derive(Specifier)]
-#[bits = 8]
-pub enum ATACommand {
-    NOP                 = 0x00,
-    IDENTIFY_DEVICE     = 0xEC,
 }
 
 #[bitfield]

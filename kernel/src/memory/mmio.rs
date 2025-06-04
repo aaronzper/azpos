@@ -1,3 +1,5 @@
+use bitvec::{field::BitField, order::Lsb0, view::BitView};
+use core::any::type_name;
 use x86_64::structures::paging::frame::PhysFrameRange;
 use crate::memory::PAGE_ALLOCATOR;
 use super::{resolve_phys_addr, PAGE_SIZE};
@@ -36,4 +38,24 @@ pub unsafe fn alloc_mmio_block<T>(len: usize) -> Option<(*mut T, PhysFrameRange)
     let ptr = start_va.as_mut_ptr();
 
     Some((ptr, frames))
+}
+
+/// Reads the given bitfield from the given raw value. Useful for parsing
+/// MMIO structures. Panics if cant fit into output type.
+pub fn read_bitfield<I: BitView, O: TryFrom<u64>>(raw: I, from: usize, to: usize) -> O {
+    let bits = raw.view_bits::<Lsb0>().get(from..to).unwrap();
+    let out: u64 = bits.load_le();
+    match out.try_into() {
+        Ok(x) => x,
+        Err(_) =>
+            panic!("Couldn't fit bitfield value {} into {}",
+                out, type_name::<O>()),
+    }
+}
+
+/// Writes the given bitfield to the given raw value. Useful for parsing
+/// MMIO structures. 
+pub fn write_bitfield<I: BitView, O: Into<u64>>(raw: &mut I, from: usize, to: usize, value: O) {
+    let bits = raw.view_bits_mut::<Lsb0>().get_mut(from..to).unwrap();
+    bits.store_le(value.into());
 }
