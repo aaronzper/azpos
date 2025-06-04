@@ -65,8 +65,14 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
         })
         .expect("No PCI storage device");
     let mut ahci = AHCIController::new(ahci_pci).unwrap();
-    let data = ahci.devices_mut()[1].read_blocks(0, 1).unwrap();
+    let mut data = ahci.devices_mut()[1].read_blocks(0, 1).unwrap();
     println!("First 32 bytes of Block 0:\n{:?}", &data[0..32]);
+
+    let s = "Hello world";
+    for i in 0..s.len() {
+        data[100 + i] = s.as_bytes()[i];
+    }
+    ahci.devices_mut()[1].write_blocks(0, &data).unwrap();
 
     init_interrupts();
 

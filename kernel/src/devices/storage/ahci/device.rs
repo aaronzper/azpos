@@ -188,6 +188,7 @@ impl CommandSlot<'_> {
     }
 
     /// Copies data out from the buffer. Panics if the buffer isnt set up yet.
+    /// Assumes this is ran after a DMA transfer
     fn copy_from_buffer(&mut self) -> Box<[u8]> {
         let mut out_buf = Vec::with_capacity(self.buffer.unwrap());
 
@@ -204,6 +205,18 @@ impl CommandSlot<'_> {
         }
 
         out_buf.into()
+    }
+
+    /// Copies data into the buffer. Panics if it isnt set up yet
+    fn copy_to_buffer(&mut self, data: &[u8]) {
+        for i in 0..self.command_header().prdt_entries {
+            let prdt = &mut self.command_header().command_table().prdt[i as usize];
+            let prdt_buf = prdt.get_mut_buf();
+
+            let start = i as usize * PRDTEntry::MAX_DATA_SIZE as usize;
+            let end = start + prdt_buf.len();
+            prdt_buf.copy_from_slice(&data[start..end]);
+        }
     }
 }
 
@@ -245,8 +258,23 @@ impl BlockDevice for AHCIDevice {
     }
 
     fn write_blocks(&mut self, index: usize, data: &[u8]) -> BlockDeviceResult<()> {
+        if data.len() == 0 {
+            return Ok(());
+        }
+
         assert!(data.len() % self.block_size() == 0);
 
-        todo!()
+        let n_blocks = data.len() / self.block_size();
+
+        if n_blocks > self.blocks_per_command() {
+            todo!("Multi-command write")
+        }
+
+        let mut command = self.allocate_command();
+        command.setup_command(ATACommand::WRITE_DMA_EXT, index, n_blocks);
+        command.copy_to_buffer(data);
+        command.execute();
+
+        Ok(())
     }
 }
