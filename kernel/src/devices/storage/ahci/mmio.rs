@@ -4,7 +4,7 @@ use alloc::slice;
 use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use x86_64::{PhysAddr, VirtAddr};
 
-use crate::memory::{flagsmf, resolve_phys_addr, resolve_virt_addr};
+use crate::memory::{resolve_phys_addr, resolve_virt_addr};
 
 use super::{fis::FISRegisterH2D, types::AHCIDeviceType, PRDT_ENTRIES_PER_COMMAND};
 

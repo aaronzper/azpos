@@ -1,11 +1,13 @@
 use core::cmp::min;
-use alloc::{boxed::Box, slice};
+use alloc::{boxed::Box, slice, string::String};
 use error::AHCIError;
+use fis::{ATACommand, FISRegisterH2D};
 use mmio::{AHCIBaseMemoryReg, AHCICommandTable};
 use bitvec::{order::Lsb0, view::BitView};
+use types::AHCIDeviceType;
 use x86_64::PhysAddr;
 
-use crate::{devices::pci::{PCIDevice, PCIDeviceClass}, memory::{mmio::alloc_mmio_block, resolve_phys_addr}};
+use crate::{devices::pci::{PCIDevice, PCIDeviceClass}, memory::{dealloc_frame, mmio::alloc_mmio_block, resolve_phys_addr}};
 
 /// AHCI Memory-Mapped IO structures
 mod mmio;
@@ -75,16 +77,53 @@ impl AHCIController {
 
         for (good_ports_index, bmr_index) in good_ports.iter().enumerate() {
             const CT_SIZE: u64 = size_of::<AHCICommandTable>() as u64;
-        
-            let port = &bmr.ports[*bmr_index];
-            println!("Detected a {:?} AHCI drive", port.signature);
 
-            let commands = port.command_list(bmr);
+            let port = &mut bmr.ports[*bmr_index];
+            port.stop();
+
+            if port.signature == AHCIDeviceType::SATAPI { continue; }
+
+            let commands = port.command_list(commands_per_port as usize);
             let port_cts_index = commands_per_port as usize * good_ports_index;
             let port_cts_addr = tables_pa + (port_cts_index as u64 * CT_SIZE);
             for ct_i in 0..commands_per_port {
                 let ct_addr = port_cts_addr + (ct_i as u64 * CT_SIZE);
                 commands[ct_i as usize].command_table_addr = ct_addr;
+                commands[ct_i as usize].prdt_entries = PRDT_ENTRIES_PER_COMMAND;
+                commands[ct_i as usize].flags.set_command_fis_len(
+                    (size_of::<FISRegisterH2D>() / size_of::<u32>()) as u8
+                );
+            }
+
+            let bc = 512;
+
+            commands[0].prdt_entries = 1;
+            commands[0].command_table().command_fis = 
+                FISRegisterH2D::new_with_type()
+                .with_is_command(true)
+                .with_command(ATACommand::IDENTIFY_DEVICE);
+
+            let (buf_ptr, buf) = unsafe { alloc_mmio_block::<u16>(bc).unwrap() };
+
+            commands[0].command_table().prdt[0].set_byte_count(bc as u32);
+            commands[0].command_table().prdt[0].set_int_flag(true);
+            commands[0].command_table().prdt[0].set_addr(buf_ptr);
+            
+            port.start();
+
+            port.issue_commanmd(0);
+            while port.command_busy(0) { }
+
+            let data = unsafe { slice::from_raw_parts(buf_ptr, 256) };
+            let drive_name: String = data[27..47].iter()
+                .flat_map(|x| x.to_be_bytes())
+                .map(|x| x as char)
+                .collect();
+                
+            println!("Detected a {:?} AHCI drive: {:?}", port.signature, drive_name.trim_end());
+
+            for frame in buf {
+                dealloc_frame(frame);
             }
         }
 

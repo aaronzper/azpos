@@ -58,7 +58,6 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     drop(sched_lock); // Drop so not locked forever
 
     let pci = PCIController::new();
-    println!("{:#?}", pci);
     let ahci_pci = pci.devices().iter()
         .find(|x| {
             let (c, sc) = x.class();

@@ -8,7 +8,7 @@ use super::{resolve_phys_addr, PAGE_SIZE};
 /// - Occupies continuous physical frames
 /// - Is *not* cacheable (cache disabled on all pages)
 /// - Is all zeroed
-/// - Is `len` bytes long
+/// - Is `len` bytes long, before the padding (see first bullet)
 ///
 /// Returns `None` if out of memory, there are no good frames to use, etc.
 /// Otherwise returns a pointer to the corresponding virtual address of the

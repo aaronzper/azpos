@@ -3,7 +3,7 @@ use core::usize;
 use bootloader_api::info::{MemoryRegion, MemoryRegionKind, MemoryRegions};
 use x86_64::{registers::control::Cr3, structures::paging::{frame::{PhysFrameRange, PhysFrameRangeInclusive}, mapper::MapToError, FrameAllocator, FrameDeallocator, Mapper, OffsetPageTable, Page, PageTableFlags, PhysFrame, Size4KiB}, PhysAddr, VirtAddr};
 
-use super::{physical_map_addr, resolve_phys_addr, PAGE_SIZE};
+use super::{physical_map_addr, resolve_phys_addr, PAGE_ALLOCATOR, PAGE_SIZE};
 
 /// The type used for the physical page reference count
 pub type PageRefCount = u8;
@@ -264,4 +264,10 @@ impl<'a> FrameDeallocator<PageSizeType> for PageAllocator<'a> {
             self.avail_bytes += PAGE_SIZE as usize;
         }
     }
+}
+
+/// Deallocates the given frame, decrementing its reference count by 1
+pub fn dealloc_frame(frame: PhysFrame) {
+    let mut lock = PAGE_ALLOCATOR.lock();
+    unsafe { lock.as_mut().unwrap().deallocate_frame(frame); }
 }
