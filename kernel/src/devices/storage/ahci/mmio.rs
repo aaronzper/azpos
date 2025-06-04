@@ -227,12 +227,13 @@ impl AHCICommandHeader {
 #[derive(Debug)]
 pub struct AHCICommandTable {
     pub command_fis: FISRegisterH2D,
+    /// Make Command FIS take up 64 bytes
     reserved_0: [u8; 64 - size_of::<FISRegisterH2D>()],
 
     /// Could also be 12 bytes, 13-16 are 0(?)
-    pub atapi_command: u16, 
+    pub atapi_command: [u8; 16], 
 
-    reserved: [u8; 48],
+    reserved_1: [u8; 48],
 
     /// Up to 0xFFFF of these
     pub prdt: [PRDTEntry; PRDT_ENTRIES_PER_COMMAND as usize],
