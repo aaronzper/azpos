@@ -13,7 +13,7 @@ use crate::{devices::pci::{PCIDevice, PCIDeviceClass}, memory::{dealloc_frame, m
 
 /// An individual AHCI device
 mod device;
-/// AHCI Memory-Mapped IO structures
+/// AHCI Memory-Mapped IO structures. Refer to the AHCI spec for more info.
 mod mmio;
 /// AHCI device types
 mod types;
