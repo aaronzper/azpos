@@ -1,12 +1,12 @@
+use modular_bitfield::prelude::*;
 use core::any::type_name;
-
 use alloc::slice;
 use bitvec::{field::BitField, order::Lsb0, view::BitView};
-use x86_64::PhysAddr;
+use x86_64::{PhysAddr, VirtAddr};
 
-use crate::memory::resolve_phys_addr;
+use crate::memory::{flagsmf, resolve_phys_addr, resolve_virt_addr};
 
-use super::{types::AHCIDeviceType, PRDT_ENTRIES_PER_COMMAND};
+use super::{fis::FISRegisterH2D, types::AHCIDeviceType, PRDT_ENTRIES_PER_COMMAND};
 
 /// Reads the given bitfield from the given raw value. Useful for parsing
 /// MMIO structures. Panics if cant fit into output type.
@@ -19,6 +19,13 @@ fn read_bitfield<I: BitView, O: TryFrom<u64>>(raw: I, from: usize, to: usize) ->
                 panic!("Couldn't fit bitfield value {} into {}", 
                     out, type_name::<O>()),
         }
+}
+
+/// Writes the given bitfield to the given raw value. Useful for parsing
+/// MMIO structures. 
+fn write_bitfield<I: BitView, O: Into<u64>>(raw: &mut I, from: usize, to: usize, value: O) {
+        let bits = raw.view_bits_mut::<Lsb0>().get_mut(from..to).unwrap();
+        bits.store_le(value.into());
 }
 
 #[repr(C)]
@@ -87,16 +94,15 @@ pub struct AHCIPort {
 impl AHCIPort {
     /// Returns a slice to the port's command list, given a reference to the HBA
     /// base memory register (needed to determine the size of the list)
-    pub fn command_list(&self, hba: &AHCIBaseMemoryReg) -> &mut [AHCICommandHeader] {
+    pub fn command_list(&self, n_commands: usize) -> &mut [AHCICommandHeader] {
         let va = resolve_phys_addr(self.cmd_list_base_addr)
             .expect("Command List unmapped!");
         let ptr = va.as_mut_ptr() as *mut AHCICommandHeader;
-        let n_commands = hba.num_supported_commands() as usize;
         unsafe { slice::from_raw_parts_mut(ptr, n_commands) }
     }
 
     pub fn fis(&self) -> &ReceivedFIS {
-        let va = resolve_phys_addr(self.cmd_list_base_addr)
+        let va = resolve_phys_addr(self.fis_base_addr)
             .expect("Received FIS unmapped!");
         let ptr = va.as_mut_ptr() as *const ReceivedFIS;
         unsafe { ptr.as_ref().unwrap() }
@@ -112,6 +118,48 @@ impl AHCIPort {
         let det: u8 = read_bitfield(self.sata_status, 0, 4);
 
         ipm == IPM_ACTIVE && det == DET_ACTIVE
+    }
+
+    /// Sets the port to start receiving commands!
+    pub fn start(&mut self) {
+        // Make sure Px.CMD_CR is clear (not currently processing a command)
+        while read_bitfield::<u32, u8>(self.command_status, 15, 16) != 0 {}
+
+        // PxCMD_ST
+        write_bitfield(&mut self.command_status, 0, 1, 1u64);
+        // PxCMD_FRE
+        write_bitfield(&mut self.command_status, 4, 5, 1u64);
+    }
+
+    /// Sets the port to stop receiving commands!
+    pub fn stop(&mut self) {
+        // PxCMD_ST
+        write_bitfield(&mut self.command_status, 0, 1, 0u64);
+        // PxCMD_FRE
+        write_bitfield(&mut self.command_status, 4, 5, 0u64);
+
+        loop {
+            let st: u8 = read_bitfield(self.command_status, 0, 1);
+            if st != 0 { continue; }
+
+            let fre: u8 = read_bitfield(self.command_status, 4, 5);
+            if fre != 0 { continue; }
+
+            break;
+        }
+    }
+
+    /// Modifies the port's command issue field to start the command at the
+    /// specified index
+    pub fn issue_commanmd(&mut self, command_index: usize) {
+        write_bitfield(&mut self.command_issue, command_index, command_index + 1, 1u64);
+    }
+
+    /// Returns whether the command at the given index is currently being
+    /// handled by the device
+    pub fn command_busy(&self, command_index: usize) -> bool {
+        read_bitfield::<u32, u8>(self.command_issue, command_index, command_index + 1)
+            == 1
     }
 }
 
@@ -134,10 +182,26 @@ pub struct ReceivedFIS {
     reserved: [u8; 0x60],
 }
 
+#[bitfield]
+#[repr(C)]
+#[derive(Debug)]
+pub struct AHCICommandHeaderFlags {
+    /// Length of the Command FIS in 32-bit dwords 
+    pub command_fis_len: B5,
+    pub atapi: bool,
+    pub write: bool,
+    pub prefetchable: bool,
+    pub reset: bool,
+    pub bist: bool,
+    pub clear_busy_on_ok: bool,
+    reserved: bool,
+    pub port_mult_port: B4,
+}
+
 #[repr(C)]
 #[derive(Debug)]
 pub struct AHCICommandHeader {
-    pub flags: u16,
+    pub flags: AHCICommandHeaderFlags,
 
     /// Number of Physical Regional Descriptor Table entries
     pub prdt_entries: u16,
@@ -160,8 +224,10 @@ impl AHCICommandHeader {
 
 #[repr(C)]
 #[repr(align(128))]
+#[derive(Debug)]
 pub struct AHCICommandTable {
-    pub command_fis: [u8; 64],
+    pub command_fis: FISRegisterH2D,
+    reserved_0: [u8; 64 - size_of::<FISRegisterH2D>()],
 
     /// Could also be 12 bytes, 13-16 are 0(?)
     pub atapi_command: u16, 
@@ -169,20 +235,13 @@ pub struct AHCICommandTable {
     reserved: [u8; 48],
 
     /// Up to 0xFFFF of these
-    prdt: [PRDTEntry; PRDT_ENTRIES_PER_COMMAND as usize],
-}
-
-impl AHCICommandTable {
-    pub fn prdt(&mut self, n_entries: usize) -> &mut [PRDTEntry]  {
-        let ptr = &raw mut self.prdt[0];
-        unsafe { slice::from_raw_parts_mut(ptr, n_entries as usize) }
-    }
+    pub prdt: [PRDTEntry; PRDT_ENTRIES_PER_COMMAND as usize],
 }
 
 #[repr(C)]
 #[derive(Debug)]
 pub struct PRDTEntry {
-    pub data_base_address: PhysAddr, 
+    data_base_address: PhysAddr, 
     reserved_1: u32,
     
     /// Max u22, bit 0 is always 1, bits 22-30 are reserved, bit 31 is interrupt
@@ -233,5 +292,15 @@ impl PRDTEntry {
         self.byte_count =
             ((int as u32) << 31)
             | (self.byte_count & ((1 << 31) - 1));
+    }
+
+    pub fn set_addr<T>(&mut self, data: *mut T) {
+        let pa = resolve_virt_addr(VirtAddr::from_ptr(data)).unwrap();
+        
+        if (pa.as_u64() & 0b1) != 0 {
+            panic!("PRDT address must be word (2-byte) aligned");
+        }
+
+        self.data_base_address = pa;
     }
 }

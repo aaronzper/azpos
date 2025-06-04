@@ -4,7 +4,7 @@ use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use heap::HeapAllocator;
 use paging::{current_pt, PageAllocator, PageRefCount};
 use spin::Mutex;
-use x86_64::{structures::paging::PageTableFlags, PhysAddr, VirtAddr};
+use x86_64::{structures::paging::{PageTableFlags, Translate}, PhysAddr, VirtAddr};
 
 
 /// Physical page allocation and management
@@ -59,6 +59,12 @@ pub fn resolve_phys_addr(pa: PhysAddr) -> Option<VirtAddr> {
     } else {
         Some(VirtAddr::new(physical_map_addr().as_u64() + pa.as_u64()))
     }
+}
+
+/// Resolves some virtual address into the physical address it points to, if
+/// mapped
+pub fn resolve_virt_addr(va: VirtAddr) -> Option<PhysAddr> {
+    current_pt().translate_addr(va)
 }
 
 fn find_usable_virtual_space() -> VirtAddr {

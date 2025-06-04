@@ -1,5 +1,5 @@
 #[repr(u32)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum AHCIDeviceType {
     SATA                = 0x00000101,
     SATAPI              = 0xEB140101,

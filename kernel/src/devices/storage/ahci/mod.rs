@@ -13,6 +13,8 @@ mod mmio;
 mod types;
 /// AHCI errors
 mod error;
+/// SATA Frame Information Structure stuff
+mod fis;
 
 pub const SATA_PCI_SUBCLASS: u8 = 0x6;
 const PCI_BAR_5: u8 = 0x9;
