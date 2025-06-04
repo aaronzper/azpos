@@ -190,14 +190,17 @@ impl CommandSlot<'_> {
     /// Copies data out from the buffer. Panics if the buffer isnt set up yet.
     fn copy_from_buffer(&mut self) -> Box<[u8]> {
         let mut out_buf = Vec::with_capacity(self.buffer.unwrap());
-        let mut bytes_transferred = 0;
+
+        // Sanity check that we got the amount of bytes we asked for
+        assert_eq!(
+            self.buffer.unwrap() as u32, 
+            self.command_header().prd_bytes_trans);
+
         for i in 0..self.command_header().prdt_entries {
             let prdt = &mut self.command_header().command_table().prdt[i as usize];
             let prdt_buf = prdt.get_mut_buf();
 
             out_buf.extend_from_slice(prdt_buf);
-
-            bytes_transferred += prdt_buf.len();
         }
 
         out_buf.into()
