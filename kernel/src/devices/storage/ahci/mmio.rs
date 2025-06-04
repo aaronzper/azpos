@@ -11,21 +11,21 @@ use super::{fis::FISRegisterH2D, types::AHCIDeviceType, PRDT_ENTRIES_PER_COMMAND
 /// Reads the given bitfield from the given raw value. Useful for parsing
 /// MMIO structures. Panics if cant fit into output type.
 fn read_bitfield<I: BitView, O: TryFrom<u64>>(raw: I, from: usize, to: usize) -> O {
-        let bits = raw.view_bits::<Lsb0>().get(from..to).unwrap();
-        let out: u64 = bits.load_le();
-        match out.try_into() {
-            Ok(x) => x,
-            Err(_) => 
-                panic!("Couldn't fit bitfield value {} into {}", 
-                    out, type_name::<O>()),
-        }
+    let bits = raw.view_bits::<Lsb0>().get(from..to).unwrap();
+    let out: u64 = bits.load_le();
+    match out.try_into() {
+        Ok(x) => x,
+        Err(_) =>
+            panic!("Couldn't fit bitfield value {} into {}",
+                out, type_name::<O>()),
+    }
 }
 
 /// Writes the given bitfield to the given raw value. Useful for parsing
 /// MMIO structures. 
 fn write_bitfield<I: BitView, O: Into<u64>>(raw: &mut I, from: usize, to: usize, value: O) {
-        let bits = raw.view_bits_mut::<Lsb0>().get_mut(from..to).unwrap();
-        bits.store_le(value.into());
+    let bits = raw.view_bits_mut::<Lsb0>().get_mut(from..to).unwrap();
+    bits.store_le(value.into());
 }
 
 #[repr(C)]
