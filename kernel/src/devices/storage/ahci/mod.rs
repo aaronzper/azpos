@@ -37,7 +37,6 @@ const MAX_COMMANDS_PER_PORT: u8 = 8;
 /// Cant be more than 0xFFFF
 const PRDT_ENTRIES_PER_COMMAND: u16 = 16;
 
-#[derive(Debug)]
 pub struct AHCIController {
     base_mem_register: &'static mut AHCIBaseMemoryReg,
     devices: Box<[AHCIDevice]>,
@@ -119,5 +118,9 @@ impl AHCIController {
             base_mem_register: bmr,
             devices: devices.into(),
         })
+    }
+
+    pub fn devices_mut(&mut self) -> &mut [AHCIDevice] {
+        &mut self.devices
     }
 }

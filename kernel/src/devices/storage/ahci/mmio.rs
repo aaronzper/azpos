@@ -272,13 +272,19 @@ impl PRDTEntry {
             | (self.byte_count & ((1 << 31) - 1));
     }
 
-    pub fn set_addr<T>(&mut self, data: *mut T) {
-        let pa = resolve_virt_addr(VirtAddr::from_ptr(data)).unwrap();
-        
+    pub fn set_addr(&mut self, pa: PhysAddr) {
         if (pa.as_u64() & 0b1) != 0 {
             panic!("PRDT address must be word (2-byte) aligned");
         }
 
         self.data_base_address = pa;
+    }
+
+    pub fn get_mut_buf(&mut self) -> &mut [u8] {
+        let buf_va = resolve_phys_addr(self.data_base_address).unwrap();
+        let buf_ptr = buf_va.as_mut_ptr::<u8>();
+        unsafe { 
+            slice::from_raw_parts_mut(buf_ptr, self.get_byte_count() as usize)
+        }
     }
 }

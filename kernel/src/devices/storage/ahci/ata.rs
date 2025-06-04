@@ -3,13 +3,16 @@ use modular_bitfield::prelude::*;
 
 use crate::memory::mmio::read_bitfield;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 #[derive(Specifier)]
 #[bits = 8]
 pub enum ATACommand {
-    NOP                 = 0x00,
-    IDENTIFY_DEVICE     = 0xEC,
+    NOP             = 0x00,
+    READ_DMA_EXT    = 0x25,
+    WRITE_DMA_EXT   = 0x35,
+    IDENTIFY_DEVICE = 0xEC,
+    
 }
 
 /// Data returned by the ATA `IDENTIFY DEVICE` command
