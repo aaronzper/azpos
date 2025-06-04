@@ -128,7 +128,7 @@ impl AHCIPort {
 
     /// Modifies the port's command issue field to start the command at the
     /// specified index
-    pub fn issue_commanmd(&mut self, command_index: usize) {
+    pub fn issue_command(&mut self, command_index: usize) {
         write_bitfield(&mut self.command_issue, command_index, command_index + 1, 1u64);
     }
 

@@ -114,7 +114,7 @@ impl AHCIController {
             
             port.start();
 
-            port.issue_commanmd(0);
+            port.issue_command(0);
             while port.command_busy(0) { }
 
             let data = unsafe { slice::from_raw_parts(buf_ptr, 256) };
