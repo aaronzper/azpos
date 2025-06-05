@@ -26,5 +26,12 @@ pub type BlockDeviceResult<T> = Result<T, BlockDeviceError>;
 
 #[derive(Debug)]
 pub enum BlockDeviceError {
-    
+    /// The length of the given data on a write was not a multiple of the device
+    /// block size
+    LengthNotBlockMultiple,
+    /// Could not allocate space for a contigous physical buffer, or otherwise
+    /// out of memory
+    OutOfMemory,
+    /// The operation failed to read or write as many bytes as expected
+    OperationFailed { transferred: usize, expected: usize },
 }

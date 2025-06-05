@@ -2,7 +2,7 @@ use core::cmp::min;
 use alloc::{boxed::Box, slice, vec::Vec};
 use bitvec::{bitbox, boxed::BitBox};
 use x86_64::structures::paging::PhysFrame;
-use crate::{devices::storage::{ahci::{ata::{ATACommand, ATADriveInfo}, fis::FISRegisterH2D, mmio::PRDTEntry, PRDT_ENTRIES_PER_COMMAND}, BlockDevice, BlockDeviceResult}, memory::{dealloc_frame, mmio::alloc_mmio_block}, scheduling::threads::sync::{KCondvar, KMutex, KMutexGuard}};
+use crate::{devices::storage::{ahci::{ata::{ATACommand, ATADriveInfo}, fis::FISRegisterH2D, mmio::PRDTEntry, PRDT_ENTRIES_PER_COMMAND}, BlockDevice, BlockDeviceError, BlockDeviceResult}, memory::{dealloc_frame, mmio::alloc_mmio_block}, scheduling::threads::sync::{KCondvar, KMutex, KMutexGuard}};
 use super::mmio::{AHCICommandHeader, AHCIPort};
 
 struct DeviceState {
@@ -129,7 +129,9 @@ impl CommandSlot<'_> {
         while self.state.port.command_busy(self.slot) { }
     }
 
-    fn setup_command(&mut self, command: ATACommand, block: usize, count: usize) {
+    fn setup_command(&mut self, command: ATACommand, block: usize, count: usize)
+        -> BlockDeviceResult<()> {
+
         const MASK: usize = (1usize << 24) - 1;
         let lba_low = block & MASK;
         let lba_high = (block >> 24) & MASK;
@@ -144,10 +146,12 @@ impl CommandSlot<'_> {
 
         self.command_header().flags.set_write(command == ATACommand::WRITE_DMA_EXT);
         self.command_header().command_table().command_fis = cmd_fis;
-        self.setup_buffer(count * self.device.block_size());
+        self.setup_buffer(count * self.device.block_size())?;
+
+        Ok(())
     }
 
-    fn setup_buffer(&mut self, len_bytes: usize) {
+    fn setup_buffer(&mut self, len_bytes: usize) -> BlockDeviceResult<()> {
         if self.buffer.is_some() {
             panic!("There's already a buffer set up on this command slot!");
         }
@@ -174,8 +178,10 @@ impl CommandSlot<'_> {
             prdt.set_int_flag(true);
 
             let (_, block) = unsafe { 
-                alloc_mmio_block::<u8>(prdt_data_len)
-                .expect("Could not allocate block for PRDT buffer")
+                match alloc_mmio_block::<u8>(prdt_data_len) {
+                    Some(x) => x,
+                    None => return Err(BlockDeviceError::OutOfMemory),
+                }
             };
 
             prdt.set_addr(block.start.start_address());
@@ -185,17 +191,13 @@ impl CommandSlot<'_> {
 
         self.alloced_frames = alloced_frames;
         self.buffer = Some(len_bytes);
+        Ok(())
     }
 
     /// Copies data out from the buffer. Panics if the buffer isnt set up yet.
     /// Assumes this is ran after a DMA transfer
     fn copy_from_buffer(&mut self) -> Box<[u8]> {
         let mut out_buf = Vec::with_capacity(self.buffer.unwrap());
-
-        // Sanity check that we got the amount of bytes we asked for
-        assert_eq!(
-            self.buffer.unwrap() as u32, 
-            self.command_header().prd_bytes_trans);
 
         for i in 0..self.command_header().prdt_entries {
             let prdt = &mut self.command_header().command_table().prdt[i as usize];
@@ -251,8 +253,16 @@ impl BlockDevice for AHCIDevice {
         }
 
         let mut command = self.allocate_command();
-        command.setup_command(ATACommand::READ_DMA_EXT, index, n_blocks);
+        command.setup_command(ATACommand::READ_DMA_EXT, index, n_blocks)?;
         command.execute();
+
+        // Check that we got the amount of bytes we asked for
+        if command.buffer.unwrap() as u32 != command.command_header().prd_bytes_trans {
+            return Err(BlockDeviceError::OperationFailed {
+                transferred: command.command_header().prd_bytes_trans as usize,
+                expected: command.buffer.unwrap(),
+            });
+        }
 
         Ok(command.copy_from_buffer())
     }
@@ -262,7 +272,9 @@ impl BlockDevice for AHCIDevice {
             return Ok(());
         }
 
-        assert!(data.len() % self.block_size() == 0);
+        if data.len() % self.block_size() != 0 {
+            return Err(BlockDeviceError::LengthNotBlockMultiple);
+        }
 
         let n_blocks = data.len() / self.block_size();
 
@@ -271,9 +283,17 @@ impl BlockDevice for AHCIDevice {
         }
 
         let mut command = self.allocate_command();
-        command.setup_command(ATACommand::WRITE_DMA_EXT, index, n_blocks);
+        command.setup_command(ATACommand::WRITE_DMA_EXT, index, n_blocks)?;
         command.copy_to_buffer(data);
         command.execute();
+
+        // Check that we sent the amount of bytes we asked for
+        if command.buffer.unwrap() as u32 != command.command_header().prd_bytes_trans {
+            return Err(BlockDeviceError::OperationFailed {
+                transferred: command.command_header().prd_bytes_trans as usize,
+                expected: command.buffer.unwrap(),
+            });
+        }
 
         Ok(())
     }
