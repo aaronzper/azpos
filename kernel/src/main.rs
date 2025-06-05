@@ -2,12 +2,14 @@
 #![no_main]
 #![feature(new_zeroed_alloc)]
 #![feature(abi_x86_interrupt)]
+#![feature(ascii_char)]
 #![allow(dead_code)]
 
 extern crate alloc;
 
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
 use devices::{fb::{FbTerminal, Framebuffer}, keyboard::keyboard_listener, pci::{PCIController, PCIDeviceClass}, storage::{ahci::{AHCIController, SATA_PCI_SUBCLASS}, BlockDevice}};
+use filesystem::{fat::FATFilesystem, FileSystem};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
@@ -67,14 +69,9 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
         })
         .expect("No PCI storage device");
     let mut ahci = AHCIController::new(ahci_pci).unwrap();
-    let mut data = ahci.devices_mut()[1].read_blocks(0, 1).unwrap();
-    println!("First 32 bytes of Block 0:\n{:?}", &data[0..32]);
 
-    let s = "Hello world";
-    for i in 0..s.len() {
-        data[100 + i] = s.as_bytes()[i];
-    }
-    ahci.devices_mut()[1].write_blocks(0, &data).unwrap();
+    let device = &mut ahci.devices_mut()[1];
+    let fs = FATFilesystem::mount(device).unwrap();
 
     init_interrupts();
 

@@ -24,8 +24,7 @@ fn main() {
     };
 
     cmd.arg("-hda").arg(format!("{path}"));
-    cmd.arg("-hdb").arg("disk.img");
-    cmd.arg("-hdc").arg("disk2.img");
+    cmd.arg("-hdb").arg("fat32.img");
 
     if gdb {
         cmd.arg("-s").arg("-S");
