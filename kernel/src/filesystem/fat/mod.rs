@@ -18,7 +18,13 @@ pub struct FATFilesystem<'a> {
 impl<'a> FileSystem<'a> for FATFilesystem<'a> {
     fn mount(drive: &'a mut dyn BlockDevice) -> FileSystemResult<Self> {
         let boot_sector = drive.read_blocks(0, 1).unwrap();
-        let mut boot_record = FATBootRecord::new(&boot_sector).unwrap();
+        let boot_record = FATBootRecord::new(&boot_sector).unwrap();
+
+        if !boot_record.valid_signature() {
+            return Err(FileSystemError::MountError(
+                format!("Invalid FAT signature")
+            ));
+        }
 
         if boot_record.fat_type() != FATType::Fat32 {
             return Err(FileSystemError::MountError(
