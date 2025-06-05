@@ -13,7 +13,7 @@ pub trait BlockDevice {
     /// Reads `n_blocks` blocks starting at a certain block index.
     ///
     /// Blocks until the operation is complete.
-    fn read_blocks(&mut self, index: usize, n_blocks: usize) 
+    fn read_blocks(&self, index: usize, n_blocks: usize) 
         -> BlockDeviceResult<Box<[u8]>>;
     /// Writes the given data starting at the given block index. Data size must
     /// be a multiple of `self.block_size()`.

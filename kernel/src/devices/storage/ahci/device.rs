@@ -2,18 +2,22 @@ use core::cmp::min;
 use alloc::{boxed::Box, slice, vec::Vec};
 use bitvec::{bitbox, boxed::BitBox};
 use x86_64::structures::paging::PhysFrame;
-use crate::{devices::storage::{ahci::{ata::{ATACommand, ATADriveInfo}, fis::FISRegisterH2D, mmio::PRDTEntry, PRDT_ENTRIES_PER_COMMAND}, BlockDevice, BlockDeviceResult}, memory::{dealloc_frame, mmio::alloc_mmio_block}, scheduling::threads::sync::{KCondvar, KMutex}};
+use crate::{devices::storage::{ahci::{ata::{ATACommand, ATADriveInfo}, fis::FISRegisterH2D, mmio::PRDTEntry, PRDT_ENTRIES_PER_COMMAND}, BlockDevice, BlockDeviceResult}, memory::{dealloc_frame, mmio::alloc_mmio_block}, scheduling::threads::sync::{KCondvar, KMutex, KMutexGuard}};
 use super::mmio::{AHCICommandHeader, AHCIPort};
+
+struct DeviceState {
+    /// The underlying MMIO register for this AHCI port
+    port: &'static mut AHCIPort,
+    /// Tracks whether command slot `i` is available (true) or in use (false)
+    available_commands: BitBox,
+}
 
 /// An individual AHCI device that can be written to or read from
 pub struct AHCIDevice {
-    /// The underlying MMIO register for this AHCI port
-    port: &'static mut AHCIPort,
-    /// The number of parralel commands supported
-    n_commands: usize,
+    /// Mutable state of the device, as opposed to the non-mut metadata stored
+    /// in the other fields. See `DeviceState` for more info.
+    state: KMutex<DeviceState>,
 
-    /// Tracks whether command slot `i` is available (true) or in use (false)
-    available_commands: KMutex<BitBox>,
     /// Condvar for waiting for a command to become available
     avail_commands_cv: KCondvar,
 
@@ -54,22 +58,15 @@ impl AHCIDevice {
             dealloc_frame(frame);
         }
 
-        let available_commands = {
-            let bitbox = bitbox![1; n_commands];
-            KMutex::new(bitbox)
-        };
-
         Self { 
-            port, n_commands, 
+            state: KMutex::new(DeviceState {
+                port,
+                available_commands: bitbox![1; n_commands],
+            }),
 
-            available_commands, avail_commands_cv: KCondvar::new(),
-
+            avail_commands_cv: KCondvar::new(),
             info
         }
-    }
-
-    fn command_list(&mut self) -> &mut [AHCICommandHeader] {
-        self.port.command_list(self.n_commands)
     }
 
     /// The number of blocks/sectors that can be fit in a single command for
@@ -83,23 +80,23 @@ impl AHCIDevice {
     }
 
     /// Allocates an unused command slot. Blocks until one is available
-    fn allocate_command<'a>(&'a mut self) -> CommandSlot<'a> {
-        let mut lock = self.available_commands.lock();
+    fn allocate_command<'a>(&'a self) -> CommandSlot<'a> {
+        let mut state = self.state.lock();
         loop {
-            match lock.first_one() {
+            match state.available_commands.first_one() {
                 Some(i) => {    
-                    lock.set(i, false);
-                    drop(lock);
+                    state.available_commands.set(i, false);
 
                     break CommandSlot {
                         slot: i,
+                        state,
                         device: self,
                         buffer: None,
                         alloced_frames: Vec::new(),
                     };
                 },
                 None => {
-                    lock = self.avail_commands_cv.wait(lock);
+                    state = self.avail_commands_cv.wait(state);
                 },
             }
         }
@@ -109,8 +106,10 @@ impl AHCIDevice {
 struct CommandSlot<'a> {
     /// The actual command slot we're using
     slot: usize,
-    /// The device on which the command applies
-    device: &'a mut AHCIDevice,
+    /// The state of the device on which the command applies
+    state: KMutexGuard<'a, DeviceState>,
+    /// The device itself
+    device: &'a AHCIDevice,
     /// Whether we've set up a AHCI PRDT buffer and, if so, how long it is
     buffer: Option<usize>,
     /// All physical frames allocated by this command for the buffer
@@ -119,14 +118,15 @@ struct CommandSlot<'a> {
 
 impl CommandSlot<'_> {
     fn command_header(&mut self) -> &mut AHCICommandHeader {
-        &mut self.device.command_list()[self.slot]
+        let n_commands = self.state.available_commands.len();
+        &mut self.state.port.command_list(n_commands)[self.slot]
     }
 
     fn execute(&mut self) {
-        self.device.port.issue_command(self.slot);
+        self.state.port.issue_command(self.slot);
 
         // TODO: Block here
-        while self.device.port.command_busy(self.slot) { }
+        while self.state.port.command_busy(self.slot) { }
     }
 
     fn setup_command(&mut self, command: ATACommand, block: usize, count: usize) {
@@ -226,7 +226,7 @@ impl Drop for CommandSlot<'_> {
             dealloc_frame(*frame);
         }
 
-        self.device.available_commands.lock().set(self.slot, true);
+        self.state.available_commands.set(self.slot, true);
     }
 }
 
@@ -239,7 +239,7 @@ impl BlockDevice for AHCIDevice {
         self.info.sector_size()
     }
 
-    fn read_blocks(&mut self, index: usize, n_blocks: usize)
+    fn read_blocks(&self, index: usize, n_blocks: usize)
         -> BlockDeviceResult<Box<[u8]>> {
 
         if n_blocks == 0 {
