@@ -21,7 +21,7 @@ pub struct FATBootRecord {
     pub root_entry_count: u16,
     total_sectors_16: u16,
     pub media_type: FATMediaType,
-    pub fat_size_16: u16,
+    fat_size_16: u16,
     pub sectors_per_track: u16,
     pub num_heads: u16,
     pub hidden_sectors: u32,
@@ -37,6 +37,7 @@ impl FATBootRecord {
         Some(unsafe { mem::transmute_copy(sized) })
     }
 
+    /// Gives the total number of sectors on the media
     pub fn total_sectors(&self) -> u32 {
         if self.total_sectors_16 != 0 {
             self.total_sectors_16 as u32
@@ -45,6 +46,7 @@ impl FATBootRecord {
         }
     }
 
+    /// Gives the type of the file sytem: FAT12/16/32
     pub fn fat_type(&self) -> FATType {
         if self.root_entry_count == 0 || self.fat_size_16 == 0 {
             return FATType::Fat32;
@@ -70,22 +72,42 @@ impl FATBootRecord {
         }
     }
 
-    pub fn extended_boot_record<'a>(&'a mut self) -> ExtendedBootRecord<'a> {
+    /// Gives the size of the FAT in sectors
+    pub fn fat_size(&self) -> u32 {
+        match self.extended_boot_record() {
+            ExtendedBootRecord::Fat32(ebr) => ebr.fat_size_32,
+            ExtendedBootRecord::Legacy(_) => self.fat_size_16 as u32,
+        }
+    }
+
+    /// Gives the extended boot record
+    pub fn extended_boot_record<'a>(&'a self) -> ExtendedBootRecord<'a> {
         match self.fat_type() {
             FATType::Fat12 | FATType::Fat16 => unsafe {
-                ExtendedBootRecord::Legacy(&mut self.ebr.legacy)
+                ExtendedBootRecord::Legacy(&self.ebr.legacy)
             },
 
             FATType::Fat32 => unsafe {
-                ExtendedBootRecord::Fat32(&mut self.ebr.fat32)
+                ExtendedBootRecord::Fat32(&self.ebr.fat32)
             }
         }
+    }
+
+    /// Returns true if the signature word in the EBR is as expected, and false
+    /// if not
+    pub fn valid_signature(&self) -> bool {
+        let signature = match self.extended_boot_record() {
+            ExtendedBootRecord::Legacy(ebr) => ebr.signature_word,
+            ExtendedBootRecord::Fat32(ebr) => ebr.signature_word,
+        };
+
+        signature == 0xAA55
     }
 }
 
 pub enum ExtendedBootRecord<'a> { 
-    Legacy(&'a mut LegacyEBR), 
-    Fat32(&'a mut FAT32EBR),
+    Legacy(&'a LegacyEBR), 
+    Fat32(&'a FAT32EBR),
 }
 
 #[repr(C)]
@@ -112,7 +134,7 @@ pub struct LegacyEBR {
 #[derive(Copy, Clone)]
 #[repr(C, packed)]
 pub struct FAT32EBR {
-    pub fat_size_32: u32,
+    fat_size_32: u32,
     pub flags: u16,
     pub version: u16,
     pub root_cluster: u32,
