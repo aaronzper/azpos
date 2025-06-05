@@ -1,4 +1,4 @@
-use core::slice;
+use core::{cmp::max, slice};
 
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use heap::HeapAllocator;
@@ -96,7 +96,13 @@ pub fn init_memory(pmap_va: u64, p_regions: &MemoryRegions) {
 
     unsafe {
         PHYS_MAP_ADDR = VirtAddr::new(pmap_va);
-        PHYS_MAP_SIZE = last_region.end;
+        PHYS_MAP_SIZE = {
+            // Always cover at least the first 4 GiB of physical memory. That area
+            // contains useful MMIO regions (local APIC, I/O APIC, PCI bars) that
+            // we want to make accessible to the kernel even if no DRAM exists >4GiB.
+            // -- From the bootloader code (it maps at least 4 GiB)
+            max(last_region.end, 0x1_0000_0000)
+        };
         PHYS_SIZE = last_usable_region.end;
     }
 
