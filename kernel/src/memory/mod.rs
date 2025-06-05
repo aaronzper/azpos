@@ -1,10 +1,10 @@
-use core::{arch::asm, cmp::max, slice};
+use core::{cmp::max, slice};
 
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use heap::HeapAllocator;
-use paging::{current_pt, pt_from_pt_entry, PageAllocator, PageRefCount, SizedPage, SizedPhysFrame};
+use paging::{current_pt, PageAllocator, PageRefCount};
 use spin::Mutex;
-use x86_64::{structures::paging::{mapper::CleanUp, FrameAllocator, Mapper, Page, PageTable, PageTableFlags, Size2MiB, Translate}, PhysAddr, VirtAddr};
+use x86_64::{structures::paging::{PageTableFlags, Translate}, PhysAddr, VirtAddr};
 
 /// Physical page allocation and management
 mod paging;
@@ -94,15 +94,15 @@ pub fn init_memory(pmap_va: u64, p_regions: &MemoryRegions) {
     let last_region = p_regions.iter()
         .last().unwrap();
 
+    // Always cover at least the first 4 GiB of physical memory. That area
+    // contains useful MMIO regions (local APIC, I/O APIC, PCI bars) that
+    // we want to make accessible to the kernel even if no DRAM exists >4GiB.
+    // -- From the bootloader code (it maps at least 4 GiB)
+    let pmap_len = max(last_region.end, 0x1_0000_0000);
+
     unsafe {
         PHYS_MAP_ADDR = VirtAddr::new(pmap_va);
-        PHYS_MAP_SIZE = {
-            // Always cover at least the first 4 GiB of physical memory. That area
-            // contains useful MMIO regions (local APIC, I/O APIC, PCI bars) that
-            // we want to make accessible to the kernel even if no DRAM exists >4GiB.
-            // -- From the bootloader code (it maps at least 4 GiB)
-            max(last_region.end, 0x1_0000_0000)
-        };
+        PHYS_MAP_SIZE = pmap_len;
         PHYS_SIZE = last_usable_region.end;
     }
 

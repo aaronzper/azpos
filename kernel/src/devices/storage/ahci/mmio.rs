@@ -1,7 +1,7 @@
 use modular_bitfield::prelude::*;
 use bitvec::{order::Lsb0, view::BitView};
-use x86_64::{PhysAddr, VirtAddr};
-use crate::memory::{resolve_phys_addr, resolve_virt_addr, mmio::{read_bitfield, write_bitfield}};
+use x86_64::PhysAddr;
+use crate::memory::{resolve_phys_addr, mmio::{read_bitfield, write_bitfield}};
 use super::{fis::FISRegisterH2D, types::AHCIDeviceType, PRDT_ENTRIES_PER_COMMAND};
 use core::slice;
 

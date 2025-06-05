@@ -1,8 +1,8 @@
 use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use core::any::type_name;
-use x86_64::{structures::paging::{frame::PhysFrameRange, mapper::TranslateResult, FrameAllocator, Mapper, Page, PageTable, PageTableFlags, Size2MiB, Translate}, PhysAddr, VirtAddr};
+use x86_64::structures::paging::{frame::PhysFrameRange, mapper::TranslateResult, Mapper, PageTableFlags, Translate};
 use crate::memory::PAGE_ALLOCATOR;
-use super::{paging::{current_pt, downsize_pages, pt_from_pt_entry, SizedPage, SizedPhysFrame}, resolve_phys_addr, resolve_virt_addr, PAGE_SIZE};
+use super::{paging::{current_pt, downsize_pages, SizedPage}, resolve_phys_addr, PAGE_SIZE};
 
 /// Reads the given bitfield from the given raw value. Useful for parsing
 /// MMIO structures. Panics if cant fit into output type.

@@ -1,6 +1,5 @@
 use core::cmp::min;
-use alloc::{boxed::Box, slice, vec::Vec};
-use ata::{ATACommand, ATADriveInfo};
+use alloc::{boxed::Box, vec::Vec};
 use device::AHCIDevice;
 use error::AHCIError;
 use fis::FISRegisterH2D;
@@ -9,7 +8,7 @@ use bitvec::{order::Lsb0, view::BitView};
 use types::AHCIDeviceType;
 use x86_64::PhysAddr;
 
-use crate::{devices::pci::{PCIDevice, PCIDeviceClass}, memory::{dealloc_frame, mmio::alloc_mmio_block, resolve_phys_addr}};
+use crate::{devices::pci::{PCIDevice, PCIDeviceClass}, memory::{mmio::alloc_mmio_block, resolve_phys_addr}};
 
 /// An individual AHCI device
 mod device;

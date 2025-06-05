@@ -3,7 +3,7 @@ use core::usize;
 use bootloader_api::info::{MemoryRegion, MemoryRegionKind, MemoryRegions};
 use x86_64::{registers::control::Cr3, structures::paging::{frame::{PhysFrameRange, PhysFrameRangeInclusive}, mapper::MapToError, page_table::PageTableEntry, FrameAllocator, FrameDeallocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size2MiB, Size4KiB}, PhysAddr, VirtAddr};
 
-use super::{physical_map_addr, resolve_phys_addr, resolve_virt_addr, PAGE_ALLOCATOR, PAGE_SIZE};
+use super::{physical_map_addr, resolve_phys_addr, PAGE_ALLOCATOR, PAGE_SIZE};
 
 /// The type used for the physical page reference count
 pub type PageRefCount = u8;
