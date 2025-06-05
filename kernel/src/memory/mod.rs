@@ -1,10 +1,10 @@
-use core::{cmp::max, slice};
+use core::{arch::asm, cmp::max, slice};
 
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use heap::HeapAllocator;
-use paging::{current_pt, PageAllocator, PageRefCount};
+use paging::{current_pt, pt_from_pt_entry, PageAllocator, PageRefCount, SizedPage, SizedPhysFrame};
 use spin::Mutex;
-use x86_64::{structures::paging::{PageTableFlags, Translate}, PhysAddr, VirtAddr};
+use x86_64::{structures::paging::{mapper::CleanUp, FrameAllocator, Mapper, Page, PageTable, PageTableFlags, Size2MiB, Translate}, PhysAddr, VirtAddr};
 
 /// Physical page allocation and management
 mod paging;

@@ -1,15 +1,15 @@
 use core::usize;
 
 use bootloader_api::info::{MemoryRegion, MemoryRegionKind, MemoryRegions};
-use x86_64::{registers::control::Cr3, structures::paging::{frame::{PhysFrameRange, PhysFrameRangeInclusive}, mapper::MapToError, FrameAllocator, FrameDeallocator, Mapper, OffsetPageTable, Page, PageTableFlags, PhysFrame, Size4KiB}, PhysAddr, VirtAddr};
+use x86_64::{registers::control::Cr3, structures::paging::{frame::{PhysFrameRange, PhysFrameRangeInclusive}, mapper::MapToError, page_table::PageTableEntry, FrameAllocator, FrameDeallocator, Mapper, OffsetPageTable, Page, PageTable, PageTableFlags, PhysFrame, Size2MiB, Size4KiB}, PhysAddr, VirtAddr};
 
-use super::{physical_map_addr, resolve_phys_addr, PAGE_ALLOCATOR, PAGE_SIZE};
+use super::{physical_map_addr, resolve_phys_addr, resolve_virt_addr, PAGE_ALLOCATOR, PAGE_SIZE};
 
 /// The type used for the physical page reference count
 pub type PageRefCount = u8;
 /// The type of the page size (used by the `x86_64` crate
 pub type PageSizeType = Size4KiB;
-type SizedPhysFrame = PhysFrame<PageSizeType>;
+pub type SizedPhysFrame = PhysFrame<PageSizeType>;
 pub type SizedPage = Page<PageSizeType>;
 
 /// Returns the currently active top-level Page Table
@@ -21,6 +21,22 @@ pub fn current_pt() -> OffsetPageTable<'static> {
         let pt = &mut *pt_va.as_mut_ptr();
         OffsetPageTable::new(pt, physical_map_addr().into())
     }
+}
+
+/// Yields the page table pointer to by some page table entry. Panics if the
+/// given entry isnt present.
+///
+/// Unsafe because called needs to ensure the address in the PT entry is a valid
+/// Page Table
+pub unsafe fn pt_from_pt_entry<'a>(entry: &PageTableEntry) -> &'a mut PageTable {
+    if entry.flags() & PageTableFlags::PRESENT == PageTableFlags::empty() {
+        panic!("Page table entry is not present!");
+    }
+
+    let pa = entry.addr();
+    let va = resolve_phys_addr(pa).unwrap();
+    let ptr = va.as_mut_ptr() as *mut PageTable;
+    unsafe { &mut *ptr }
 }
 
 /// Returns all frames that are fully contained within the given region.
@@ -270,4 +286,57 @@ impl<'a> FrameDeallocator<PageSizeType> for PageAllocator<'a> {
 pub fn dealloc_frame(frame: PhysFrame) {
     let mut lock = PAGE_ALLOCATOR.lock();
     unsafe { lock.as_mut().unwrap().deallocate_frame(frame); }
+}
+
+/// Remaps the physical memory map in that given range into "normal" (4KiB) 
+/// sized pages, instead of the large pages provided by the bootloader. 
+/// This gives us more granular control in determining which flags to use
+/// over which addresses.
+//
+/// Unsafe because playing with page tables is scary (boo!)
+pub unsafe fn downsize_pages(start_va: VirtAddr, len: u64) {
+    let end_va = start_va + len;
+
+    let start_big_page = Page::<Size2MiB>::containing_address(start_va);
+    let end_big_page = Page::<Size2MiB>::containing_address(end_va - 1);
+    let big_page_range = Page::range_inclusive(start_big_page, end_big_page);
+    
+    let pt = current_pt();
+    let mut lock = PAGE_ALLOCATOR.lock();
+    let page_alloc = lock.as_mut().unwrap();
+
+    for big_page in big_page_range {
+        let l2pt = unsafe {
+            let l4pt = pt.level_4_table();
+            let l3pt = pt_from_pt_entry(&l4pt[big_page.p4_index()]);
+            pt_from_pt_entry(&l3pt[big_page.p3_index()])
+        };
+
+        let p2_entry = &mut l2pt[big_page.p2_index()];
+
+        let old_flags = p2_entry.flags();
+
+        // This already isn't a huge page, skip!
+        if old_flags & PageTableFlags::HUGE_PAGE == PageTableFlags::empty() {
+            continue;
+        }
+
+        let l1pt_frame: SizedPhysFrame = page_alloc.allocate_frame().unwrap();
+        let l1pt_va = resolve_phys_addr(l1pt_frame.start_address()).unwrap();
+        let l1pt: &mut PageTable = unsafe { 
+            &mut *(l1pt_va.as_mut_ptr() as *mut PageTable)
+        };
+
+        let flags = old_flags & !PageTableFlags::HUGE_PAGE;
+
+        let mut pa = p2_entry.addr();
+        for entry in l1pt.iter_mut() {
+            entry.set_addr(pa, flags);
+            pa += PAGE_SIZE;
+        }
+
+        p2_entry.set_addr(l1pt_frame.start_address(), flags);
+    }
+
+    x86_64::instructions::tlb::flush_all();
 }
