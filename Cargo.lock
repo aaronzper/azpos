@@ -74,6 +74,8 @@ dependencies = [
 [[package]]
 name = "bootloader"
 version = "0.11.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "718ebb60a92a2e37f9c6c6ab26f0adfd117aa6f1a8cd08d07bbd5a7762ff0812"
 dependencies = [
  "anyhow",
  "bootloader-boot-config",
@@ -88,6 +90,8 @@ dependencies = [
 [[package]]
 name = "bootloader-boot-config"
 version = "0.11.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a4ff46e7fd938aa06b17d44dce17f605105da3df01b1ae8a7f02d248c9b12f6"
 dependencies = [
  "serde",
 ]
@@ -95,6 +99,8 @@ dependencies = [
 [[package]]
 name = "bootloader_api"
 version = "0.11.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77fadafc2a2fa690f4f14a2e2a41c65d9e810b7fe959245bdf6d3b9c6d7e4bf1"
 
 [[package]]
 name = "byteorder"
