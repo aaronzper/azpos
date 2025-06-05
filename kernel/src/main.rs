@@ -20,6 +20,8 @@ mod logger;
 mod panic;
 /// Device drivers
 mod devices;
+/// Virtual File System and specific file system drivers (e.g. FAT32)
+mod filesystem;
 /// Memory subsystem (paging, the heap, etc)
 mod memory;
 /// CPU interrupt subsystem (faults, hardware interrupts)
