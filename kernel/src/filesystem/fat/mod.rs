@@ -94,10 +94,9 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
 
         println!("Root Directory:");
         for entry in root_dir.iter() {
-            if entry.is_free() { continue; }
-            if entry.attributes.long_file_name() { continue; }
-
-            println!("{entry:#?}");
+            if let Some(s) = entry.full_name() {
+                println!("{s}");
+            }
         }
 
         Ok(fs)

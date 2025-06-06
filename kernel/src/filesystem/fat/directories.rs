@@ -1,5 +1,5 @@
 use core::{ascii, ops::Index};
-use alloc::{boxed::Box, slice};
+use alloc::{boxed::Box, format, slice, string::String};
 use modular_bitfield::{error::OutOfBounds, prelude::*};
 
 #[bitfield]
@@ -83,15 +83,33 @@ pub struct FATDirectoryEntry {
 }
 
 impl FATDirectoryEntry {
-    /// Per spec, if first byte of an entry is 0xE5, its free, but NOT last
+    /// If the given entry is free to be used
     pub fn is_free(&self) -> bool {
-        self.file_name.as_bytes()[0] == 0xE5
+        // Per spec, if first byte of an entry is 0xE5, its free, but NOT last
+        self.file_name.as_bytes()[0] == 0xE5 || self.is_last()
     }
 
     /// Per spec, the entry is free AND all entries after are free if the first
     /// byte is 0x00
     fn is_last(&self) -> bool {
         self.file_name.as_bytes()[0] == 0x00
+    }
+
+    /// Returns the full name, including extension, of the file. Returns `None`
+    /// if the entry is free or an LFN entry
+    pub fn full_name(&self) -> Option<String> {
+        if self.is_free() || self.attributes.long_file_name() {
+            return None;
+        }
+
+        let name = self.file_name.as_str().trim_end();
+        let ext = self.file_extension.as_str().trim_end();
+
+        Some(if ext.is_empty() {
+            String::from(name)
+        } else {
+            format!("{name}.{ext}")
+        })
     }
 }
 
