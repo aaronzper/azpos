@@ -8,6 +8,8 @@ use super::{FileMetadata, FileSystem, FileSystemResult};
 mod boot_record;
 /// The titular File Allocation Table
 mod fat;
+/// Stuff for dealing with FAT directories
+mod directories;
 
 /// Types of FAT filesystem
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
