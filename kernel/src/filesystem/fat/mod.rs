@@ -26,7 +26,7 @@ pub struct FATFilesystem<'a> {
 
 impl FATFilesystem<'_> {
     /// Returns the data in the file/directory in the cluster chain started
-    /// by the given cluster
+    /// by the given cluster. Returns `None` if the cluster number is invalid.
     fn read_chain_data(&self, first_cluster: u32) -> Option<Box<[u8]>> {
         let cluster_sz = self.boot_record.sectors_per_cluster as usize;
         let data = self.fat.get_chain(first_cluster)?.iter()
@@ -38,6 +38,44 @@ impl FATFilesystem<'_> {
             .collect();
 
         Some(data)
+    }
+
+    /// Returns the directory pointed to by `path`. If the path doesn't exist or
+    /// isn't a directory, returns `None`.
+    fn get_directory(&self, path: &FilePath) -> Option<FATDirectory> {
+        let root_dir_cluster = match self.boot_record.extended_boot_record() {
+            boot_record::ExtendedBootRecord::Fat32(ebr) => ebr.root_cluster,
+            _ => unimplemented!("FAT 12/16 root dir"),
+        };
+        let root_data = self.read_chain_data(root_dir_cluster).unwrap();
+        let root_dir = FATDirectory::new(root_data).unwrap();
+        
+        let mut path_iter = path.as_parts();
+        let mut dir = root_dir;
+        loop {
+            let name = match path_iter.next() {
+                Some(s) => s.to_uppercase(),
+                None => break,
+            };
+
+            dir = match dir.find(&name) {
+                Some(entry) => {
+                    if !entry.attributes.directory() {
+                        return None;
+                    }
+
+                    let cluster = entry.cluster();
+                    let data = self.read_chain_data(cluster)
+                        .expect("Invalid cluster number");
+
+                    FATDirectory::new(data).expect("Invalid directory data")
+                },
+
+                None => return None,
+            }
+        }
+
+        Some(dir)
     }
 }
 
@@ -72,14 +110,6 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
 
         let fs = Self { drive, boot_record, fat };
         
-        let root_dir_cluster = match fs.boot_record.extended_boot_record() {
-            boot_record::ExtendedBootRecord::Fat32(ebr) => ebr.root_cluster,
-            _ => unimplemented!("FAT 12/16 root dir"),
-        };
-        
-        let root_data = fs.read_chain_data(root_dir_cluster).unwrap();
-        let root_dir = FATDirectory::new(root_data).unwrap();
-
         println!("Mounted FAT fs!");
         println!("{} clusters at {} sectors per", 
             fs.boot_record.cluster_count(), fs.boot_record.sectors_per_cluster);
@@ -92,11 +122,11 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
         };
         println!("Volume Name: {}", name);
 
-        println!("Root Directory:");
-        for entry in root_dir.iter() {
-            if let Some(s) = entry.full_name() {
-                println!("{s}");
-            }
+        let path = FilePath::new(String::from("/foobar/src")).unwrap();
+        println!("Contents of {}:", path.as_str());
+        let contents = fs.dir_contents(&path).unwrap();
+        for f in contents {
+            println!("* {:?}", f);
         }
 
         Ok(fs)
@@ -106,7 +136,27 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
         self.drive
     }
 
-    fn dir_contents(&self, path: &FilePath) -> Box<[FileMetadata]> {
-        todo!()
+    fn dir_contents(&self, path: &FilePath) -> Option<Box<[FileMetadata]>> {
+        let files = self.get_directory(path)?.iter()
+            .filter_map(|entry| {
+                // We'll use filenames starting with a dot as hidden, instead of
+                // the FAT attribute, to be filesystem agnostic
+                if entry.attributes.hidden() { 
+                    return None; 
+                }
+
+                let name = match entry.full_name() {
+                    Some(n) => String::from(n),
+                    None => return None,
+                };
+
+                Some(FileMetadata { 
+                    filename: name,
+                    is_directory: entry.attributes.directory()
+                })
+            })
+            .collect();
+
+        Some(files)
     }
 }

@@ -8,10 +8,11 @@ pub use path::FilePath;
 /// FAT filesystem implementation
 pub mod fat;
 
+#[derive(Debug)]
 /// Metadata on a file or directory, but not its contents
 pub struct FileMetadata {
-    filename: String,
-    is_directory: bool,
+    pub filename: String,
+    pub is_directory: bool,
 }
 
 /// A file system that can be mounted from a block device, and supports a
@@ -26,7 +27,9 @@ pub trait FileSystem<'a> {
     fn unmount(self) -> &'a mut dyn BlockDevice;
     
     /// Provides the `FileMetadata` of every entry in a particular directory
-    fn dir_contents(&self, path: &FilePath) -> Box<[FileMetadata]>;
+    ///
+    /// Returns `None` if the path is invalid (doesn't exist, not a dir, etc)
+    fn dir_contents(&self, path: &FilePath) -> Option<Box<[FileMetadata]>>;
 
     // TODO: File R/W, creation, moving, etc
 }

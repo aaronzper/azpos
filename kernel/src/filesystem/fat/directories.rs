@@ -111,6 +111,11 @@ impl FATDirectoryEntry {
             format!("{name}.{ext}")
         })
     }
+
+    /// Returns the cluster number of the file/dir pointed to by the entry
+    pub fn cluster(&self) -> u32 {
+        self.first_cluster_low as u32 | ((self.first_cluster_high as u32) << 16)
+    }
 }
 
 #[derive(Debug)]
@@ -154,6 +159,17 @@ impl FATDirectory {
             dir: self,
             index: 0,
         }
+    }
+
+    /// Finds and returns a directory entry by filename, if it exists
+    pub fn find(&self, filename: &str) -> Option<&FATDirectoryEntry> {
+        self.iter().find(|e| {
+            if let Some(s) = e.full_name() {
+                s.as_str() == filename
+            } else {
+                false
+            }
+        })
     }
 }
 
