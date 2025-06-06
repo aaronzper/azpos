@@ -1,5 +1,6 @@
 use core::{ascii, mem};
 
+use crate::devices::storage::mbr::MBR_SIGNATURE;
 use super::FATType;
 
 #[repr(u8)]
@@ -122,7 +123,7 @@ impl FATBootRecord {
             self.ebr.legacy.signature_word
         };
 
-        signature == 0xAA55
+        signature == MBR_SIGNATURE
     }
 
     /// Returns the sector number that starts the given cluster

@@ -1,5 +1,7 @@
 use alloc::boxed::Box;
 
+/// Master Boot Record utilities
+pub mod mbr;
 /// AHCI (SATA) driver
 pub mod ahci;
 
@@ -8,13 +10,16 @@ pub mod ahci;
 pub trait BlockDevice {
     /// The number of blocks on the device
     fn num_blocks(&self) -> usize;
+
     /// The size, in bytes, of a single block
     fn block_size(&self) -> usize;
+
     /// Reads `n_blocks` blocks starting at a certain block index.
     ///
     /// Blocks until the operation is complete.
     fn read_blocks(&self, index: usize, n_blocks: usize) 
         -> BlockDeviceResult<Box<[u8]>>;
+
     /// Writes the given data starting at the given block index. Data size must
     /// be a multiple of `self.block_size()`.
     ///

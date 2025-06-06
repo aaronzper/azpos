@@ -8,7 +8,7 @@
 extern crate alloc;
 
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
-use devices::{fb::{FbTerminal, Framebuffer}, keyboard::keyboard_listener, pci::{PCIController, PCIDeviceClass}, storage::{ahci::{AHCIController, SATA_PCI_SUBCLASS}, BlockDevice}};
+use devices::{fb::{FbTerminal, Framebuffer}, keyboard::keyboard_listener, pci::{PCIController, PCIDeviceClass}, storage::{ahci::{AHCIController, SATA_PCI_SUBCLASS}, mbr::MasterBootRecord, BlockDevice}};
 use filesystem::{fat::FATFilesystem, FileSystem};
 use interrupts::init_interrupts;
 use logger::set_logger;
@@ -70,7 +70,18 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
         .expect("No PCI storage device");
     let mut ahci = AHCIController::new(ahci_pci).unwrap();
 
-    let device = &mut ahci.devices_mut()[1];
+    let device = &mut ahci.devices_mut()[0];
+
+    let mbr = MasterBootRecord::new(
+        (*device.read_blocks(0, 1).unwrap()).try_into().unwrap()
+    ).unwrap();
+    println!("Active Partitions:");
+    for part in mbr.active_partitions() {
+        let start = part.lba_start();
+        let end = start + part.num_sectors();
+        println!("{:#X}\t-> {:#X}\t({:?})", start, end, part.partition_type());
+    }
+    panic!();
     let fs = FATFilesystem::mount(device).unwrap();
 
     init_interrupts();
