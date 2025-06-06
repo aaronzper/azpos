@@ -65,7 +65,7 @@ impl FATTime {
 }
 
 #[repr(C, packed)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FATDirectoryEntry {
     pub file_name: [ascii::Char; 8],
     pub file_extension: [ascii::Char; 3],

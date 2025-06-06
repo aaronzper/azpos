@@ -1,3 +1,5 @@
+use core::ascii;
+
 use alloc::{boxed::Box, format, string::String};
 use boot_record::FATBootRecord;
 use directories::FATDirectory;
@@ -126,7 +128,16 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
         println!("Contents of {}:", path.as_str());
         let contents = fs.dir_contents(&path).unwrap();
         for f in contents {
-            println!("* {:?}", f);
+            println!("* {:?}:", f);
+            let f_path = FilePath::new(format!("{}/{}", path.as_str(), f.filename)).unwrap();
+            let f_data = fs.read_all(&f_path).unwrap();
+            let s = f_data.iter()
+                .map(|b| match char::try_from(*b) {
+                    Ok(c) => c,
+                    Err(_) => '?',
+                })
+                .collect::<String>();
+            println!("{s}<EOF>");
         }
 
         Ok(fs)
@@ -158,5 +169,21 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
             .collect();
 
         Some(files)
+    }
+
+    fn read_all(&self, path: &FilePath) -> Option<Box<[u8]>> {
+        let dir = self.get_directory(&path.path_dirs())?;
+        let entry = dir.find(&path.filename().to_uppercase())?;
+
+        if entry.attributes.hidden() || entry.full_name().is_none() {
+            return None;
+        }
+
+        let all_data = self.read_chain_data(entry.cluster())?;
+        
+        let len = entry.file_size as usize;
+        let data = &all_data[0..len];
+
+        Some(data.into())
     }
 }

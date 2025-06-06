@@ -31,6 +31,9 @@ pub trait FileSystem<'a> {
     /// Returns `None` if the path is invalid (doesn't exist, not a dir, etc)
     fn dir_contents(&self, path: &FilePath) -> Option<Box<[FileMetadata]>>;
 
+    /// Reads all data in the file at the given path, if it exists
+    fn read_all(&self, path: &FilePath) -> Option<Box<[u8]>>;
+
     // TODO: File R/W, creation, moving, etc
 }
 
