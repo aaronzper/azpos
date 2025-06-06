@@ -46,23 +46,38 @@ impl FATBootRecord {
         }
     }
 
+    /// Gives the number of clusters on the media
+    pub fn cluster_count(&self) -> u32 {
+        let root_dir_sectors = 
+            ((self.root_entry_count * 32) + (self.bytes_per_sector - 1))
+            / self.bytes_per_sector;
+
+        let fat_size = if self.fat_size_16 != 0 {
+            self.fat_size_16 as u32
+        } else {
+            // Manually read this instead of using `extended_boot_record()`
+            // since we need the cluster count to calculate the FAT type, and
+            // the FAT type to determine which EBR to use. This is safe since
+            // if fat_size_16 is 0, we must be usint FAT32.
+            unsafe { self.ebr.fat32.fat_size_32 }
+        };
+
+        let data_sectors = self.total_sectors() - (
+            self.reserved_sector_count as u32 + 
+            (self.num_fats as u32 * fat_size) + 
+            root_dir_sectors as u32
+        );
+
+        data_sectors / self.sectors_per_cluster as u32
+    }
+
     /// Gives the type of the file sytem: FAT12/16/32
     pub fn fat_type(&self) -> FATType {
         if self.root_entry_count == 0 || self.fat_size_16 == 0 {
             return FATType::Fat32;
         }
 
-        let root_dir_sectors = 
-            ((self.root_entry_count * 32) + (self.bytes_per_sector - 1))
-            / self.bytes_per_sector;
-
-        let data_sector = self.total_sectors() - 
-            (self.reserved_sector_count + 
-            (self.num_fats as u16 * self.fat_size_16) +
-            root_dir_sectors) as u32;
-
-        let cluster_count = data_sector / self.sectors_per_cluster as u32;
-
+        let cluster_count = self.cluster_count();
         if cluster_count < 4085 {
             FATType::Fat12
         } else if cluster_count < 65525 {
