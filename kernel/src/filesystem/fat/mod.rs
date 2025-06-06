@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, format};
+use alloc::{boxed::Box, format, string::String};
 use boot_record::FATBootRecord;
 use fat::{FATEntry, FileAllocationTable};
 use crate::{devices::storage::BlockDevice, filesystem::FileSystemError};
@@ -19,6 +19,23 @@ pub struct FATFilesystem<'a> {
     drive: &'a mut dyn BlockDevice,
     boot_record: FATBootRecord,
     fat: FileAllocationTable,
+}
+
+impl FATFilesystem<'_> {
+    /// Returns the data in the file/directory in the cluster chain started
+    /// by the given cluster
+    fn read_chain_data(&self, first_cluster: u32) -> Option<Box<[u8]>> {
+        let cluster_sz = self.boot_record.sectors_per_cluster as usize;
+        let data = self.fat.get_chain(first_cluster)?.iter()
+            .flat_map(|cluster| {
+                let sector = self.boot_record.cluster_start_sector(*cluster);
+
+                self.drive.read_blocks(sector as usize, cluster_sz).unwrap()
+            })
+            .collect();
+
+        Some(data)
+    }
 }
 
 impl<'a> FileSystem<'a> for FATFilesystem<'a> {
@@ -50,12 +67,20 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
         let fat_raw = drive.read_blocks(fat_sector, fat_len).unwrap();
         let fat = FileAllocationTable::new(fat_raw, &boot_record).unwrap();
 
+        let fs = Self { drive, boot_record, fat };
+        
+        let root_dir_cluster = match fs.boot_record.extended_boot_record() {
+            boot_record::ExtendedBootRecord::Fat32(ebr) => ebr.root_cluster,
+            _ => unimplemented!("FAT 12/16 root dir"),
+        };
+        
+        let root_data = fs.read_chain_data(root_dir_cluster).unwrap();
+
         println!("Mounted FAT fs!");
         println!("{} clusters at {} sectors per", 
-            boot_record.cluster_count(), boot_record.sectors_per_cluster);
-        println!("OEM Name: {}", boot_record.oem_name.as_str());
-        println!("Type: {:?}", boot_record.fat_type());
-        let name = match boot_record.extended_boot_record() {
+            fs.boot_record.cluster_count(), fs.boot_record.sectors_per_cluster);
+        println!("Type: {:?}", fs.boot_record.fat_type());
+        let name = match fs.boot_record.extended_boot_record() {
             boot_record::ExtendedBootRecord::Legacy(ebr) =>
                 ebr.volume_label.as_str(),
             boot_record::ExtendedBootRecord::Fat32(ebr) =>
@@ -63,27 +88,23 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
         };
         println!("Volume Name: {}", name);
 
-        let mut free_count = 0;
-        for (i, entry) in fat.iter().enumerate() {
-            match entry {
-                fat::FATEntry::Free => free_count += 1,
-                _ => println!("Cluster {}: {:?}", i, entry),
-            }
-        }
-        println!("{} free clusters", free_count);
+        println!("Root Directory Dump:");
 
-        let (first_chain_i, _) = fat.iter()
-            .enumerate()
-            .filter(|(_, entry)| {
-                matches!(entry, FATEntry::Allocated { next: _ })
+        let chars = root_data.iter()
+            .map(|byte| match byte.as_ascii() {
+                Some(c) => c.into(),
+                None => '?',
             })
-            .min_by(|(i_a, _), (i_b, _)| i_a.cmp(i_b))
-            .unwrap();
+            .enumerate()
+            .flat_map(|(i, c)| if i % 32 == 0 {
+                ['\n', c].to_vec()
+            } else {
+                [c].to_vec()
+            })
+            .collect::<String>();
+        println!("{}", chars);
 
-        let first_chain = fat.get_chain(first_chain_i as u32).unwrap();
-        println!("{:#?}", first_chain);
-
-        Ok(Self { drive, boot_record, fat })
+        Ok(fs)
     }
 
     fn unmount(self) -> &'a mut dyn BlockDevice {

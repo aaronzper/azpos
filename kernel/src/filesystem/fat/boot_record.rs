@@ -46,8 +46,8 @@ impl FATBootRecord {
         }
     }
 
-    /// Gives the number of clusters on the media
-    pub fn cluster_count(&self) -> u32 {
+    /// Gives the number of data sectors
+    fn data_sectors(&self) -> u32 {
         let root_dir_sectors = 
             ((self.root_entry_count * 32) + (self.bytes_per_sector - 1))
             / self.bytes_per_sector;
@@ -62,13 +62,17 @@ impl FATBootRecord {
             unsafe { self.ebr.fat32.fat_size_32 }
         };
 
-        let data_sectors = self.total_sectors() - (
+        let non_data_sectors = 
             self.reserved_sector_count as u32 + 
             (self.num_fats as u32 * fat_size) + 
-            root_dir_sectors as u32
-        );
+            root_dir_sectors as u32;
 
-        data_sectors / self.sectors_per_cluster as u32
+        self.total_sectors() - non_data_sectors
+    }
+
+    /// Gives the number of clusters on the media
+    pub fn cluster_count(&self) -> u32 {
+        self.data_sectors() / self.sectors_per_cluster as u32
     }
 
     /// Gives the type of the file sytem: FAT12/16/32
@@ -117,6 +121,13 @@ impl FATBootRecord {
         };
 
         signature == 0xAA55
+    }
+
+    /// Returns the sector number that starts the given cluster
+    pub fn cluster_start_sector(&self, cluster: u32) -> u32 {
+        let non_data_sectors = self.total_sectors() - self.data_sectors();
+        // Subtract 2 cause the first two cluster numbers are reserved/invalid
+        non_data_sectors + ((cluster - 2) * self.sectors_per_cluster as u32)
     }
 }
 
