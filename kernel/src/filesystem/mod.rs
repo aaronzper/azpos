@@ -1,6 +1,10 @@
 use alloc::{boxed::Box, string::String};
 use crate::devices::storage::BlockDevice;
 
+/// File path struct
+mod path;
+pub use path::FilePath;
+
 /// FAT filesystem implementation
 pub mod fat;
 
@@ -22,7 +26,7 @@ pub trait FileSystem<'a> {
     fn unmount(self) -> &'a mut dyn BlockDevice;
     
     /// Provides the `FileMetadata` of every entry in a particular directory
-    fn dir_contents(&self, path: &str) -> Box<[FileMetadata]>;
+    fn dir_contents(&self, path: &FilePath) -> Box<[FileMetadata]>;
 
     // TODO: File R/W, creation, moving, etc
 }

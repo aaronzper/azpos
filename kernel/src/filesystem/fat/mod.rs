@@ -2,7 +2,7 @@ use alloc::{boxed::Box, format, string::String};
 use boot_record::FATBootRecord;
 use directories::FATDirectory;
 use fat::{FATEntry, FileAllocationTable};
-use crate::{devices::storage::BlockDevice, filesystem::FileSystemError};
+use crate::{devices::storage::BlockDevice, filesystem::{FilePath, FileSystemError}};
 use super::{FileMetadata, FileSystem, FileSystemResult};
 
 /// FAT Boot Record structures
@@ -106,7 +106,7 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
         self.drive
     }
 
-    fn dir_contents(&self, path: &str) -> Box<[FileMetadata]> {
+    fn dir_contents(&self, path: &FilePath) -> Box<[FileMetadata]> {
         todo!()
     }
 }
