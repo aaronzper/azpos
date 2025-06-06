@@ -1,6 +1,6 @@
 use alloc::{boxed::Box, format};
 use boot_record::FATBootRecord;
-use fat::FileAllocationTable;
+use fat::{FATEntry, FileAllocationTable};
 use crate::{devices::storage::BlockDevice, filesystem::FileSystemError};
 use super::{FileMetadata, FileSystem, FileSystemResult};
 
@@ -71,6 +71,17 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
             }
         }
         println!("{} free clusters", free_count);
+
+        let (first_chain_i, _) = fat.iter()
+            .enumerate()
+            .filter(|(_, entry)| {
+                matches!(entry, FATEntry::Allocated { next: _ })
+            })
+            .min_by(|(i_a, _), (i_b, _)| i_a.cmp(i_b))
+            .unwrap();
+
+        let first_chain = fat.get_chain(first_chain_i as u32).unwrap();
+        println!("{:#?}", first_chain);
 
         Ok(Self { drive, boot_record, fat })
     }

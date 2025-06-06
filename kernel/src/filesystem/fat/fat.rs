@@ -1,4 +1,4 @@
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 use super::{boot_record::FATBootRecord, FATType};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -43,6 +43,35 @@ impl FileAllocationTable {
             fat: self,
             index: 0,
         }
+    }
+
+    /// Traverses the FAT to get a cluster chain sarting at a certain index.
+    ///
+    /// If the cluster at `start_index` is part of a valid chain, returns a
+    /// list of clusters indexes making up the chain, starting with `start_index`.
+    ///
+    /// If it isn't (references a free cluster, an invalid index, etc),
+    /// returns `None`.
+    pub fn get_chain(&self, start_index: u32) -> Option<Box<[u32]>> {
+        let mut chain = Vec::new();
+        let mut i = start_index;
+        loop {
+            match self.get_entry(i)? {
+                FATEntry::Allocated { next } => {
+                    chain.push(i);
+                    i = next;
+                },
+
+                FATEntry::AllocatedEOF => {
+                    chain.push(i);
+                    break;
+                },
+
+                _ => return None,
+            }
+        }
+
+        Some(chain.into())
     }
 
     pub fn get_entry(&self, index: u32) -> Option<FATEntry> {
