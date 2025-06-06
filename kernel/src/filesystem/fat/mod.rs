@@ -88,7 +88,7 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
 
         if boot_record.bytes_per_sector as usize != drive.block_size() {
             return Err(FileSystemError::MountError(
-                format!("Invalid sector size: read {}, expected {}",
+                format!("Invalid sector size: read {}, should be {}. Is this formatted?",
                     boot_record.bytes_per_sector as usize, drive.block_size())
             ));
         }

@@ -115,9 +115,12 @@ impl FATBootRecord {
     /// Returns true if the signature word in the EBR is as expected, and false
     /// if not
     pub fn valid_signature(&self) -> bool {
-        let signature = match self.extended_boot_record() {
-            ExtendedBootRecord::Legacy(ebr) => ebr.signature_word,
-            ExtendedBootRecord::Fat32(ebr) => ebr.signature_word,
+        // Safe since the signature word is in the same position in both types
+        // of EBR. Don't want to do this the safe way since this might be an
+        // otherwith invalid boot record, so properly checking the FAT type
+        // could get messy
+        let signature = unsafe {
+            self.ebr.legacy.signature_word
         };
 
         signature == 0xAA55
