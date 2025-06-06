@@ -84,7 +84,7 @@ impl FATFilesystem<'_> {
 impl<'a> FileSystem<'a> for FATFilesystem<'a> {
     fn mount(drive: &'a mut dyn BlockDevice) -> FileSystemResult<Self> {
         let boot_sector = drive.read_blocks(0, 1).unwrap();
-        let boot_record = FATBootRecord::new(&boot_sector).unwrap();
+        let boot_record = FATBootRecord::new(&(*boot_sector).try_into().unwrap());
 
         if boot_record.bytes_per_sector as usize != drive.block_size() {
             return Err(FileSystemError::MountError(

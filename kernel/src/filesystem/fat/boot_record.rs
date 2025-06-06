@@ -30,11 +30,10 @@ pub struct FATBootRecord {
 }
 
 impl FATBootRecord {
-    /// Parses out a FAT Boot Record from a boot sector. Given sector must be
-    /// at least 512 bytes, returns `None` if not.
-    pub fn new(boot_sector: &[u8]) -> Option<Self> {
-        let sized: &[u8; 512] = boot_sector.try_into().ok()?;
-        Some(unsafe { mem::transmute_copy(sized) })
+    /// Parses out a FAT Boot Record from a boot sector. Doesn't garuntee that
+    /// the sector is valid!
+    pub fn new(bytes: &[u8; 512]) -> Self {
+        unsafe { mem::transmute_copy(bytes) }
     }
 
     /// Gives the total number of sectors on the media
