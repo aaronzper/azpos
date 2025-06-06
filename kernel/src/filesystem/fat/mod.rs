@@ -1,5 +1,6 @@
 use alloc::{boxed::Box, format, string::String};
 use boot_record::FATBootRecord;
+use directories::FATDirectory;
 use fat::{FATEntry, FileAllocationTable};
 use crate::{devices::storage::BlockDevice, filesystem::FileSystemError};
 use super::{FileMetadata, FileSystem, FileSystemResult};
@@ -77,6 +78,7 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
         };
         
         let root_data = fs.read_chain_data(root_dir_cluster).unwrap();
+        let root_dir = FATDirectory::new(root_data).unwrap();
 
         println!("Mounted FAT fs!");
         println!("{} clusters at {} sectors per", 
@@ -90,21 +92,13 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
         };
         println!("Volume Name: {}", name);
 
-        println!("Root Directory Dump:");
+        println!("Root Directory:");
+        for entry in root_dir.iter() {
+            if entry.is_free() { continue; }
+            if entry.attributes.long_file_name() { continue; }
 
-        let chars = root_data.iter()
-            .map(|byte| match byte.as_ascii() {
-                Some(c) => c.into(),
-                None => '?',
-            })
-            .enumerate()
-            .flat_map(|(i, c)| if i % 32 == 0 {
-                ['\n', c].to_vec()
-            } else {
-                [c].to_vec()
-            })
-            .collect::<String>();
-        println!("{}", chars);
+            println!("{entry:#?}");
+        }
 
         Ok(fs)
     }
