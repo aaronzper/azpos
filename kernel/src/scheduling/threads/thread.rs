@@ -50,21 +50,6 @@ impl Thread {
         }
     }
 
-    /// Starts and hands control over to the thread. Panics if the thread has
-    /// already been started. Unsafe cause duh.
-    pub unsafe fn start(&mut self) -> ! {
-        if self.started() {
-            panic!("Thread has already been started!");
-        }
-        self.runs += 1;
-
-        let stack = self.state.int_stack.clone();
-
-        unsafe {
-            stack.iretq()
-        }
-    }
-
     /// Returns whether the thread  has been started
     pub fn started(&self) -> bool {
         self.runs != 0
@@ -87,6 +72,5 @@ extern "C" fn run_thread<F, T>(entrypoint: &mut F) -> !
 
     let boxed = unsafe { Box::from_raw(entrypoint) };
     boxed();
-    println!("Thread finished!");
     loop {} // TODO: Thread exit
 }

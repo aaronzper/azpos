@@ -14,7 +14,8 @@ use filesystem::{fat::FATFilesystem, FilePath, FileSystem};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
-use scheduling::{threads::Thread, SCHEDULER};
+use processes::{spawn_proc, Process};
+use scheduling::{thread_yield, threads::Thread, SCHEDULER};
 
 #[macro_use]
 /// Global kernel logger
@@ -84,10 +85,7 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     init_interrupts();
 
-    // Unsafe since we're using the unlocked scheduler (plus cause `start()`
-    // itself is unsafe) but since we're the only "thread" its fine so no data
-    // races
-    unsafe { 
-        (*sched_ptr).start();
-    }
+    thread_yield();
+
+    panic!("Scheduler yield returned -- this shouldn't happen!");
 }

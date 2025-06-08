@@ -2,7 +2,7 @@ use core::{cell::UnsafeCell, ops::{Deref, DerefMut}, sync::atomic::{AtomicBool, 
 use alloc::vec::Vec;
 use spin::Mutex;
 
-use crate::scheduling::{kthread_yield, BlockedThread, SCHEDULER};
+use crate::scheduling::{thread_yield, BlockedThread, SCHEDULER};
 
 /// A kernel mutex that blocks until able to acquire the lock
 pub struct KMutex<T> {
@@ -61,7 +61,7 @@ impl<T> KMutex<T> {
                     blocks.push(block);
                     drop(sched);
                     drop(blocks);
-                    kthread_yield();
+                    thread_yield();
                 },
             }
         }

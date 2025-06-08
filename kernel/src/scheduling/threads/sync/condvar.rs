@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::scheduling::{kthread_yield, BlockedThread, SCHEDULER};
+use crate::scheduling::{thread_yield, BlockedThread, SCHEDULER};
 
 use super::{KMutex, KMutexGuard};
 
@@ -32,7 +32,7 @@ impl KCondvar {
         let mutex = guard.into_inner_mutex();
         drop(sched);
 
-        kthread_yield();
+        thread_yield();
         mutex.lock()
     }
 

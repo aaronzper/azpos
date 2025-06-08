@@ -1,10 +1,8 @@
 use core::cmp::Ordering;
-
 use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use threads::{state::CpuState, Thread, ThreadID, ThreadTable};
-
 use crate::devices::pic::PICInterrupt;
 
 /// Threads
@@ -20,15 +18,24 @@ fn wait_loop() {
     }
 }
 
+enum SchedulerState {
+    /// The scheduler has not been started
+    NotStarted,
+    /// The scheduler is running the idle thread
+    Idle,
+    /// The scheduler is running this thread
+    Running(ThreadID),
+}
+
 /// The main scheduler, in charge of scheduling kernel and user threads
 pub struct Scheduler {
     /// A map owning all threads and allocating their IDs
     threads: ThreadTable,
     /// A list of all runable threads
     runnable: Vec<ThreadID>,
-    /// The current thread that is running. If this is `None`, the scheduler
-    /// hasnt been started yet or is idling
-    currently_running: Option<ThreadID>,
+    /// What the scheduler is currently up to. See rustdoc on `SchedulerState`
+    /// for more info.
+    status: SchedulerState,
     /// A dummy wait thread that just idles. Used if there are no other threads
     /// to run
     idle_thread: Thread
@@ -40,7 +47,7 @@ impl Scheduler {
         Scheduler {
             threads: ThreadTable::new(),
             runnable: Vec::new(),
-            currently_running: None,
+            status: SchedulerState::NotStarted,
             idle_thread: Thread::new_thread(wait_loop, None),
         }
     }
@@ -62,34 +69,12 @@ impl Scheduler {
         self.threads.get_thread_mut(id)
     }
 
-    /// Returns the ID of the currently running thread.
+    /// Returns the ID of the currently running thread, if the scheduler is
+    /// running one
     pub fn currently_running(&self) -> Option<ThreadID> {
-        self.currently_running
-    }
-
-    /// Starts the scheduler by running a thread! This should only be run at the
-    /// end of `kmain()`.
-    ///
-    /// Panics if there are no threads to run or they've all been started
-    ///
-    /// Unsafe cause it changes control to any thread and never returns (spooky)
-    pub unsafe fn start(&mut self) -> ! {
-        let id_to_start = self.runnable.iter()
-            .find(|id| {
-                let t = self.get_thread(**id).unwrap();
-                !t.started()
-            });
-
-        match id_to_start {
-            Some(id) => {
-                self.currently_running = Some(*id);
-                let t = self.get_thread_mut(*id).unwrap();
-                unsafe {
-                    t.start()
-                }
-            }
-
-            None => panic!("No threads to start")
+        match self.status {
+            SchedulerState::Running(tid) => Some(tid),
+            _ => None,
         }
     }
 
@@ -116,23 +101,26 @@ impl Scheduler {
             })
             .cloned();
 
-        let old_t = match self.currently_running() {
-            Some(id) => {
-                self.get_thread_mut(id).unwrap()
+        match self.status {
+            SchedulerState::Running(tid) => {
+                let old_t = self.get_thread_mut(tid).unwrap();
+                old_t.state = state.clone();
             },
-            None => {
-                &mut self.idle_thread
-            }
+
+            SchedulerState::Idle => {
+                self.idle_thread.state = state.clone();
+            },
+
+            SchedulerState::NotStarted => (),
         };
-        old_t.state = state.clone();
 
         let new_t = match new_id {
             Some(id) => {
-                self.currently_running = Some(id);
+                self.status = SchedulerState::Running(id);;
                 self.get_thread_mut(id).unwrap()
             },
             None => {
-                self.currently_running = None;
+                self.status = SchedulerState::Idle;
                 &mut self.idle_thread
             },
         };
@@ -173,9 +161,7 @@ impl Drop for BlockedThread {
 ///
 /// (Right now this just raises a timer interrupt to run the scheduler but once
 /// i have a "yield" syscall I'll use that)
-///
-/// TODO: Panic if we're not running in thread (e.g. an ISR)
-pub fn kthread_yield() {
+pub fn thread_yield() {
     unsafe {
         // Kinda jank but raise a timer interrupt to "yield"
         x86_64::instructions::interrupts::
