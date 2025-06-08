@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use threads::{state::CpuState, Thread, ThreadID, ThreadTable};
-use crate::devices::pic::PICInterrupt;
+use crate::{devices::pic::PICInterrupt, processes::PROCESSES};
 
 /// Threads
 pub mod threads;
@@ -101,10 +101,21 @@ impl Scheduler {
             })
             .cloned();
 
+        // Save state of the old thread
         match self.status {
             SchedulerState::Running(tid) => {
                 let old_t = self.get_thread_mut(tid).unwrap();
                 old_t.state = state.clone();
+
+                match old_t.proccess() {
+                    Some(old_pid) => {
+                        let mut procs_lock = PROCESSES.lock();
+                        let old_p = procs_lock.get_proc_mut(old_pid).unwrap();
+                        old_p.save_page_tables();
+                    },
+
+                    None => (),
+                }
             },
 
             SchedulerState::Idle => {
@@ -114,10 +125,23 @@ impl Scheduler {
             SchedulerState::NotStarted => (),
         };
 
+        // Load in state of the new thread
         let new_t = match new_id {
             Some(id) => {
                 self.status = SchedulerState::Running(id);;
-                self.get_thread_mut(id).unwrap()
+                let new_t = self.get_thread_mut(id).unwrap();
+
+                match new_t.proccess() {
+                    Some(new_pid) => {
+                        let mut procs_lock = PROCESSES.lock();
+                        let new_p = procs_lock.get_proc_mut(new_pid).unwrap();
+                        new_p.load_page_tables();
+                    },
+
+                    None => (),
+                };
+
+                new_t
             },
             None => {
                 self.status = SchedulerState::Idle;

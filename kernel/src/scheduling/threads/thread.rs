@@ -64,6 +64,11 @@ impl Thread {
     pub fn add_run(&mut self) {
         self.runs += 1
     }
+
+    /// Returns the thread's PID, if it has one
+    pub fn proccess(&self) -> Option<ProcessID> {
+        self.process
+    }
 }
 
 extern "C" fn run_thread<F, T>(entrypoint: &mut F) -> !

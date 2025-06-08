@@ -2,13 +2,13 @@ use core::{cmp::max, slice};
 
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use heap::HeapAllocator;
-use paging::{current_pt, PageAllocator, PageRefCount};
+use paging::{PageAllocator, PageRefCount};
 use spin::Mutex;
 use x86_64::{structures::paging::{PageTableFlags, Translate}, PhysAddr, VirtAddr};
 
 /// Physical page allocation and management
 mod paging;
-pub use paging::dealloc_frame;
+pub use paging::{dealloc_frame, current_pt};
 /// Dynamic memory allocation (the heap!)
 mod heap;
 /// Stack allocation for kernel and user threads

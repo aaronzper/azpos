@@ -32,6 +32,8 @@ mod memory;
 mod interrupts;
 /// Scheduling subsystem (scheduler, threads, processes)
 mod scheduling;
+/// Userspace processes subsystem (procs, their resources, syscalls, etc)
+mod processes;
 
 const BOOTCONFIG: BootloaderConfig = {
     let mut conf = BootloaderConfig::new_default();
@@ -59,10 +61,6 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     let mut sched_lock = SCHEDULER.lock();
     sched_lock.add_thread(Thread::new_thread(keyboard_listener, None));
-    let s = "Hello from thread";
-    sched_lock.add_thread(Thread::new_thread(move || {
-        println!("{}", s);
-    }, None));
 
     let sched_ptr = &raw mut sched_lock;
     drop(sched_lock); // Drop so not locked forever
@@ -82,6 +80,8 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     let fs = FATFilesystem::mount(part.as_mut()).unwrap();
     let exe = FilePath::new("/programs/adam.exe".to_string()).unwrap();
     let elf_data = fs.read_all(&exe).unwrap();
+
+    let adam = spawn_proc("adam".to_string(), elf_data).unwrap();
 
     init_interrupts();
 

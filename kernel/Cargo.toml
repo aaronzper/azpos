@@ -16,3 +16,4 @@ uart_16550 = "0.2.0"
 pic8259 = "0.10.1"
 bitvec = { version = "1.0.1", features = ["alloc"], default-features = false }
 modular-bitfield = "0.12.0"
+elf = { version = "0.8.0", features = ["alloc"], default-features = false } 
