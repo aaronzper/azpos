@@ -1,6 +1,7 @@
+use alloc::boxed::Box;
 use x86_64::VirtAddr;
 
-use crate::memory::stacks::{KThreadStack, KERNEL_STACK_ALLOCATOR};
+use crate::{memory::stacks::{KThreadStack, KERNEL_STACK_ALLOCATOR}, processes::ProcessID};
 
 use super::state::CpuState;
 
@@ -16,24 +17,36 @@ pub struct Thread {
     /// How many times the thread has been scheduled. If 0, the thread hasn't
     /// been started
     runs: usize,
-    /// The thread's stack, if its a kernel thread (user stacks are handled in
-    /// user space)
-    stack: Option<KThreadStack>,
+    /// The thread's stack, if its a kernel thread, or kernel stack, if its a
+    /// user thread
+    kstack: KThreadStack,
+    /// The thread's process, if its a user thread
+    process: Option<ProcessID>,
 }
 
 impl Thread {
-    /// Creates a new kthread that will start executing at the given entrypoint
-    pub fn new_kthread(entry_point: fn() -> ()) -> Thread {
-        let stack = KERNEL_STACK_ALLOCATOR.lock().alloc_stack()
+    /// Creates a new thread that will start executing at the given entrypoint.
+    /// Optionally takes a process ID, if its a user thread.
+    pub fn new_thread<F, T>(entrypoint: F, proc: Option<ProcessID>) -> Self
+        where F: FnOnce() -> T + Send + 'static,
+              T: Send + 'static {
+
+        let kstack = KERNEL_STACK_ALLOCATOR.lock().alloc_stack()
             .expect("Out of memory");
 
-        let entry_ptr = VirtAddr::from_ptr(entry_point as *const ());
+        let runner_ptr = VirtAddr::from_ptr(run_thread::<F, T> as *const ());
 
-        Thread {
-            state: CpuState::new(stack.top(), entry_ptr),
-            entry_point: entry_ptr,
+        // Create and immediately leak a box with the entrypoint. It'll get
+        // re-boxed and freed in `run_thread`.
+        let entrypoint_ref = Box::leak(Box::new(entrypoint));
+        let entrypoint_ptr = (entrypoint_ref as *mut F) as u64;
+
+        Self {
+            state: CpuState::new(kstack.top(), runner_ptr, entrypoint_ptr),
+            entry_point: runner_ptr,
             runs: 0,
-            stack: Some(stack),
+            kstack,
+            process: proc,
         }
     }
 
@@ -66,4 +79,14 @@ impl Thread {
     pub fn add_run(&mut self) {
         self.runs += 1
     }
+}
+
+extern "C" fn run_thread<F, T>(entrypoint: &mut F) -> !
+    where F: FnOnce() -> T + Send + 'static,
+          T: Send + 'static {
+
+    let boxed = unsafe { Box::from_raw(entrypoint) };
+    boxed();
+    println!("Thread finished!");
+    loop {} // TODO: Thread exit
 }

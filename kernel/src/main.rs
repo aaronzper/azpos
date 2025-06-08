@@ -57,7 +57,11 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     println!("Hello world!");
 
     let mut sched_lock = SCHEDULER.lock();
-    sched_lock.add_thread(Thread::new_kthread(keyboard_listener));
+    sched_lock.add_thread(Thread::new_thread(keyboard_listener, None));
+    let s = "Hello from thread";
+    sched_lock.add_thread(Thread::new_thread(move || {
+        println!("{}", s);
+    }, None));
 
     let sched_ptr = &raw mut sched_lock;
     drop(sched_lock); // Drop so not locked forever

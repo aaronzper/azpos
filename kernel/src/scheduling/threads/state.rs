@@ -27,15 +27,16 @@ pub struct CpuState {
 }
 
 impl CpuState {
-    /// Creates a new state with a given stack pointer and entrypoint. All other
-    /// registers are set to 0.
-    pub fn new(stack: VirtAddr, entry: VirtAddr) -> CpuState {
+    /// Creates a new state with a given stack pointer, and entrypoint, and 
+    /// argument (as passed to the entrypoint in `RDI`). All other registers are
+    /// set to 0.
+    pub fn new(stack: VirtAddr, entry: VirtAddr, arg: u64) -> CpuState {
         CpuState {
             rax: 0,
             rbx: 0,
             rcx: 0,
             rdx: 0,
-            rdi: 0,
+            rdi: arg,
             rsi: 0,
             rbp: 0,
             r8: 0,

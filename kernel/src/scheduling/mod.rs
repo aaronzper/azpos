@@ -41,7 +41,7 @@ impl Scheduler {
             threads: ThreadTable::new(),
             runnable: Vec::new(),
             currently_running: None,
-            idle_thread: Thread::new_kthread(wait_loop),
+            idle_thread: Thread::new_thread(wait_loop, None),
         }
     }
     
@@ -173,6 +173,8 @@ impl Drop for BlockedThread {
 ///
 /// (Right now this just raises a timer interrupt to run the scheduler but once
 /// i have a "yield" syscall I'll use that)
+///
+/// TODO: Panic if we're not running in thread (e.g. an ISR)
 pub fn kthread_yield() {
     unsafe {
         // Kinda jank but raise a timer interrupt to "yield"
