@@ -1,10 +1,13 @@
 #![no_std]
 #![no_main]
 
-use core::panic::PanicInfo;
+use core::{arch::asm, panic::PanicInfo};
 
 #[unsafe(no_mangle)]
 pub fn _start() -> ! {
+    // Force a fault since this instruction isnt allowed in user mode (uncomment
+    // it to demonstrate)
+    //unsafe { asm!("cli") };
     loop {}
 }
 

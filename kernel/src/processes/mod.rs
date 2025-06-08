@@ -1,13 +1,17 @@
-use alloc::{boxed::Box, collections::btree_map::BTreeMap, string::String};
-use elf::{endian::NativeEndian, ElfBytes};
+use core::any::Any;
+
+use alloc::{boxed::Box, collections::btree_map::BTreeMap, slice, string::String};
+use elf::{abi::ET_REL, endian::NativeEndian, ElfBytes};
+use elfdefs::{ELF_ET_EXEC, ELF_ET_REL};
 use lazy_static::lazy_static;
 use spin::Mutex;
-use crate::scheduling::{thread_yield, threads::Thread, SCHEDULER};
+use x86_64::{registers::rflags::RFlags, structures::{idt::InterruptStackFrameValue, paging::Page}, VirtAddr};
+use crate::{interrupts::GDT, memory::{user::{alloc_user_pages, UserMemoryFlags, USER_END_ADDR}, SizedPage, PAGE_SIZE}, scheduling::{thread_yield, threads::Thread, SCHEDULER}};
 
 mod process;
 pub use process::{ProcessID, Process};
 /// ELF helper definitions
-mod elfdefs;
+pub mod elfdefs;
 
 lazy_static! {
     pub static ref PROCESSES: Mutex<ProcessTable> =
@@ -66,22 +70,74 @@ pub fn spawn_proc(name: String, elf_data: Box<[u8]>) -> Option<ProcessID> {
     // (actual parsing happens in the thread below)
     let elf = ElfBytes::<NativeEndian>::minimal_parse(&elf_data).ok()?;
     elf.segments()?;
+    if elf.ehdr.e_type & ELF_ET_EXEC == 0 { return None; }
     if elf.ehdr.e_entry == 0 { return None; }
 
     let proc = Process::new(name);
     let pid = PROCESSES.lock().add_proc(proc);
 
     let t = Thread::new_thread(move || {
-        println!("Hi from proc {pid}");
+        let int_stack = {
+            println!("Hi from proc {pid}");
 
-        let elf = ElfBytes::<NativeEndian>::minimal_parse(&elf_data).unwrap();
-        for segment in elf.segments().unwrap() {
-            if segment.p_type == elfdefs::ELF_PT_LOAD {
-                println!("LOAD {segment:?}");
+            let elf = ElfBytes::<NativeEndian>::minimal_parse(&elf_data)
+                .unwrap();
+
+            let va_offset = if elf.ehdr.e_type & ELF_ET_REL != 0 {
+                PAGE_SIZE
+            } else {
+                0
+            };
+
+            for segment in elf.segments().unwrap() {
+                if segment.p_type == elfdefs::ELF_PT_LOAD {
+                    let va_start = VirtAddr::new(segment.p_vaddr + va_offset);
+                    let va_end = va_start + segment.p_memsz;
+                    let first_page = SizedPage::containing_address(va_start);
+                    let last_page = SizedPage::containing_address(va_end - 1);
+                    let pages = Page::range_inclusive(first_page, last_page);
+                    let flags = UserMemoryFlags::from_elf_flags(segment.p_flags);
+                    alloc_user_pages(pages, flags);
+
+                    let seg_slice = unsafe {
+                        let ptr = va_start.as_mut_ptr() as *mut u8;
+                        slice::from_raw_parts_mut(ptr, segment.p_memsz as usize)
+                    };
+
+                    let seg_data = elf.segment_data(&segment).unwrap();
+                    seg_slice[0..seg_data.len()].copy_from_slice(seg_data);
+
+                    // zero the rest
+                    for i in seg_data.len()..seg_slice.len() {
+                        seg_slice[i] = 0;
+                    }
+                }
             }
-        }
 
-        println!("Entrypoint: {:#X}", elf.ehdr.e_entry);
+            // Allocate the stack
+            let stack_top = VirtAddr::new(USER_END_ADDR - PAGE_SIZE);
+            let stack_bottom = stack_top - (PAGE_SIZE * 4);
+            let first_page = SizedPage::containing_address(stack_bottom);
+            let last_page = SizedPage::containing_address(stack_top - 1);
+            let pages = Page::range_inclusive(first_page, last_page);
+            let flags = UserMemoryFlags {
+                read: true, write: true, exec: false,
+            };
+            alloc_user_pages(pages, flags);
+
+            InterruptStackFrameValue::new(
+                VirtAddr::new(elf.ehdr.e_entry + va_offset),
+                GDT.user_code,
+                RFlags::INTERRUPT_FLAG,
+                stack_top,
+                GDT.user_data,
+            )
+        };
+
+        // Jump to userland!
+        unsafe {
+            int_stack.iretq();
+        }
 
     }, Some(pid));
     SCHEDULER.lock().add_thread(t);

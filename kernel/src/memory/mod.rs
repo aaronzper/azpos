@@ -8,13 +8,15 @@ use x86_64::{structures::paging::{PageTableFlags, Translate}, PhysAddr, VirtAddr
 
 /// Physical page allocation and management
 mod paging;
-pub use paging::{dealloc_frame, current_pt};
+pub use paging::{dealloc_frame, current_pt, SizedPage};
 /// Dynamic memory allocation (the heap!)
 mod heap;
 /// Stack allocation for kernel and user threads
 pub mod stacks;
 /// Helpers for MMIO-related things
 pub mod mmio;
+/// Userspace memory management
+pub mod user;
 
 /// The beginning of the kernel image (and address spave) in Virtual Memory
 pub const KERNEL_START_ADDR: u64 = 0xFFFF_8000_0000_0000;

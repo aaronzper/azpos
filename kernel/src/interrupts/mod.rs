@@ -27,6 +27,8 @@ pub struct GDTSegments {
     gdt: GlobalDescriptorTable,
     pub code: SegmentSelector,
     pub data: SegmentSelector,
+    pub user_code: SegmentSelector,
+    pub user_data: SegmentSelector,
     tss: SegmentSelector,
 }
 
@@ -67,9 +69,13 @@ lazy_static! {
         
         let code = gdt.append(Descriptor::kernel_code_segment());
         let data = gdt.append(Descriptor::kernel_data_segment());
+
+        let user_code = gdt.append(Descriptor::user_code_segment());
+        let user_data = gdt.append(Descriptor::user_data_segment());
+
         let tss = gdt.append(Descriptor::tss_segment(&TSS));
 
-        GDTSegments { gdt, code, data, tss }
+        GDTSegments { gdt, code, data, user_code, user_data, tss }
     };
 }
 

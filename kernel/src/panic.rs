@@ -13,7 +13,12 @@ fn panic(info: &PanicInfo) -> ! {
     println!("\n!!! KERNEL PANIC !!!");
     if let Some(sched) = SCHEDULER.try_lock() {
         if let Some(tid) = sched.currently_running() {
-            println!("From thread {}", tid);
+            print!("From thread {tid} ");
+
+            match sched.get_thread(tid).unwrap().proccess() {
+                Some(pid) => println!("(process {pid})"),
+                None => println!("(kernel)"),
+            }
         }
     }
     println!("{}", info);
