@@ -1,4 +1,4 @@
-use std::{fs::{File, OpenOptions}, io::Write, path::{Path, PathBuf}};
+use std::{fs::{self, File, OpenOptions}, io::Write, path::{Path, PathBuf}};
 
 use bootloader::BootConfig;
 use fatfs::{FileSystem, FormatVolumeOptions, FsOptions};
@@ -12,15 +12,17 @@ fn create_root_fs(partition: &mut StreamSlice<File>) {
     let options = FormatVolumeOptions::new()
         .volume_label(*b"azpOS Root\0")
         .fat_type(fatfs::FatType::Fat32);
-
     fatfs::format_volume(&mut *partition, options).unwrap();
 
     let fs = FileSystem::new(partition, FsOptions::new()).unwrap();
 
-    fs.root_dir().create_dir("foobar").unwrap();
-    fs.root_dir().create_dir("foobar/src").unwrap();
-    let mut file = fs.root_dir().create_file("foobar/src/hi.txt").unwrap();
-    file.write_all(b"Hello world").unwrap();
+    fs.root_dir().create_dir("Programs").unwrap();
+
+    let testprog_path = 
+        PathBuf::from(std::env::var_os("CARGO_BIN_FILE_ADAM_adam").unwrap());
+    let testprog = fs::read(testprog_path).unwrap();
+    let mut file = fs.root_dir().create_file("Programs/adam.exe").unwrap();
+    file.write_all(&testprog).unwrap();
 }
 
 fn create_root_parition_mbr(mut disk: File) -> StreamSlice<File> {

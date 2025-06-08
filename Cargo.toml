@@ -10,11 +10,12 @@ gpt = "4"
 fatfs = "0.3"
 fscommon  = "0.1"
 azpos-kernel = { path = "kernel", artifact = "bin", target = "x86_64-unknown-none" }
+adam = { path = "programs/adam", artifact = "bin", target = "x86_64-unknown-none" }
 
 [dependencies]
 # used for UEFI booting in QEMU
 ovmf-prebuilt = "0.1.0-alpha.1"
 
 [workspace]
-members = ["kernel"]
+members = ["kernel", "programs/adam"]
 

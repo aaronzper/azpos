@@ -124,7 +124,7 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
         };
         println!("Volume Name: {}", name);
 
-        let path = FilePath::new(String::from("/foobar/src")).unwrap();
+        let path = FilePath::new(String::from("/programs")).unwrap();
         println!("Contents of {}:", path.as_str());
         let contents = fs.dir_contents(&path).unwrap();
         for f in contents {
