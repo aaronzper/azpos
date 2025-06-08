@@ -6,6 +6,8 @@ use crate::scheduling::{thread_yield, threads::Thread, SCHEDULER};
 
 mod process;
 pub use process::{ProcessID, Process};
+/// ELF helper definitions
+mod elfdefs;
 
 lazy_static! {
     pub static ref PROCESSES: Mutex<ProcessTable> =
@@ -60,17 +62,27 @@ impl ProcessTable {
 ///
 /// Returns the PID if successful and `None` if the ELF data is invalid.
 pub fn spawn_proc(name: String, elf_data: Box<[u8]>) -> Option<ProcessID> {
-    // Do a quick parse to make sure the ELF is kosher and return if not (actual
-    // parsing happens in the thread below)
-    ElfBytes::<NativeEndian>::minimal_parse(&elf_data).ok()?;
+    // Do some quick parses to make sure the ELF is kosher and return if not
+    // (actual parsing happens in the thread below)
+    let elf = ElfBytes::<NativeEndian>::minimal_parse(&elf_data).ok()?;
+    elf.segments()?;
+    if elf.ehdr.e_entry == 0 { return None; }
 
     let proc = Process::new(name);
     let pid = PROCESSES.lock().add_proc(proc);
 
     let t = Thread::new_thread(move || {
-        let elf = ElfBytes::<NativeEndian>::minimal_parse(&elf_data).unwrap();
-
         println!("Hi from proc {pid}");
+
+        let elf = ElfBytes::<NativeEndian>::minimal_parse(&elf_data).unwrap();
+        for segment in elf.segments().unwrap() {
+            if segment.p_type == elfdefs::ELF_PT_LOAD {
+                println!("LOAD {segment:?}");
+            }
+        }
+
+        println!("Entrypoint: {:#X}", elf.ehdr.e_entry);
+
     }, Some(pid));
     SCHEDULER.lock().add_thread(t);
 
