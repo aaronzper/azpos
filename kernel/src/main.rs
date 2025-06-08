@@ -7,9 +7,10 @@
 
 extern crate alloc;
 
+use alloc::string::ToString;
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
 use devices::{fb::{FbTerminal, Framebuffer}, keyboard::keyboard_listener, pci::{PCIController, PCIDeviceClass}, storage::{ahci::{AHCIController, SATA_PCI_SUBCLASS}, mbr::MasterBootRecord, BlockDevice}};
-use filesystem::{fat::FATFilesystem, FileSystem};
+use filesystem::{fat::FATFilesystem, FilePath, FileSystem};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
@@ -74,6 +75,8 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     let part = &mut device.partition().unwrap()[2];
 
     let fs = FATFilesystem::mount(part.as_mut()).unwrap();
+    let exe = FilePath::new("/programs/adam.exe".to_string()).unwrap();
+    let elf_data = fs.read_all(&exe).unwrap();
 
     init_interrupts();
 

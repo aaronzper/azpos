@@ -111,35 +111,6 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
         let fat = FileAllocationTable::new(fat_raw, &boot_record).unwrap();
 
         let fs = Self { drive, boot_record, fat };
-        
-        println!("Mounted FAT fs!");
-        println!("{} clusters at {} sectors per", 
-            fs.boot_record.cluster_count(), fs.boot_record.sectors_per_cluster);
-        println!("Type: {:?}", fs.boot_record.fat_type());
-        let name = match fs.boot_record.extended_boot_record() {
-            boot_record::ExtendedBootRecord::Legacy(ebr) =>
-                ebr.volume_label.as_str(),
-            boot_record::ExtendedBootRecord::Fat32(ebr) =>
-                ebr.volume_label.as_str(),
-        };
-        println!("Volume Name: {}", name);
-
-        let path = FilePath::new(String::from("/programs")).unwrap();
-        println!("Contents of {}:", path.as_str());
-        let contents = fs.dir_contents(&path).unwrap();
-        for f in contents {
-            println!("* {:?}:", f);
-            let f_path = FilePath::new(format!("{}/{}", path.as_str(), f.filename)).unwrap();
-            let f_data = fs.read_all(&f_path).unwrap();
-            let s = f_data.iter()
-                .map(|b| match char::try_from(*b) {
-                    Ok(c) => c,
-                    Err(_) => '?',
-                })
-                .collect::<String>();
-            println!("{s}<EOF>");
-        }
-
         Ok(fs)
     }
 

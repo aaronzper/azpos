@@ -10,7 +10,7 @@ const DISK_SZ: u64 = 256 * 1024 * 1024; // 256 MiB
 
 fn create_root_fs(partition: &mut StreamSlice<File>) {
     let options = FormatVolumeOptions::new()
-        .volume_label(*b"azpOS Root\0")
+        .volume_label(*b"azpOS Root ")
         .fat_type(fatfs::FatType::Fat32);
     fatfs::format_volume(&mut *partition, options).unwrap();
 
