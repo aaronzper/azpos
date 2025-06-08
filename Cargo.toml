@@ -5,6 +5,10 @@ edition = "2024"
 
 [build-dependencies]
 bootloader = "0.11.10"
+mbrman = "0.6"
+gpt = "4"
+fatfs = "0.3"
+fscommon  = "0.1"
 azpos-kernel = { path = "kernel", artifact = "bin", target = "x86_64-unknown-none" }
 
 [dependencies]

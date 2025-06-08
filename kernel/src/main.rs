@@ -71,7 +71,7 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     let mut ahci = AHCIController::new(ahci_pci).unwrap();
 
     let device = ahci.devices()[0].take_device().unwrap();
-    let part = &mut device.partition().unwrap()[1];
+    let part = &mut device.partition().unwrap()[2];
 
     let fs = FATFilesystem::mount(part.as_mut()).unwrap();
 
