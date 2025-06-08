@@ -16,7 +16,7 @@ pub enum ATACommand {
 }
 
 /// Data returned by the ATA `IDENTIFY DEVICE` command
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ATADriveInfo {
     model_name: String,
     num_sectors: usize,

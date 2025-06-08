@@ -1,8 +1,8 @@
 use core::cmp::min;
-use alloc::{boxed::Box, slice, vec::Vec};
+use alloc::{boxed::Box, slice, sync::Arc, vec::Vec};
 use bitvec::{bitbox, boxed::BitBox};
 use x86_64::structures::paging::PhysFrame;
-use crate::{devices::storage::{ahci::{ata::{ATACommand, ATADriveInfo}, fis::FISRegisterH2D, mmio::PRDTEntry, PRDT_ENTRIES_PER_COMMAND}, BlockDevice, BlockDeviceError, BlockDeviceResult}, memory::{dealloc_frame, mmio::alloc_mmio_block}, scheduling::threads::sync::{KCondvar, KMutex, KMutexGuard}};
+use crate::{devices::storage::{ahci::{ata::{ATACommand, ATADriveInfo}, fis::FISRegisterH2D, mmio::PRDTEntry, PRDT_ENTRIES_PER_COMMAND}, mbr::MasterBootRecord, BlockDevice, BlockDeviceError, BlockDeviceResult}, memory::{dealloc_frame, mmio::alloc_mmio_block}, scheduling::threads::sync::{KCondvar, KMutex, KMutexGuard}};
 use super::mmio::{AHCICommandHeader, AHCIPort};
 
 struct DeviceState {
@@ -12,17 +12,30 @@ struct DeviceState {
     available_commands: BitBox,
 }
 
-/// An individual AHCI device that can be written to or read from
-pub struct AHCIDevice {
+/// Stores data that is shared between multiple "devices" on the same
+/// physical AHCI device (specifically, partitions). The condvar is used
+/// for waiting on a command slot to be available.
+struct Shared {
     /// Mutable state of the device, as opposed to the non-mut metadata stored
     /// in the other fields. See `DeviceState` for more info.
     state: KMutex<DeviceState>,
 
     /// Condvar for waiting for a command to become available
     avail_commands_cv: KCondvar,
+}
 
-    /// Basic info on the device
+/// An individual AHCI device that can be written to or read from, or a
+/// partition thereof
+pub struct AHCIDevice {
+    shared: Arc<Shared>,
+
+    /// Basic info on the (physical) device (not the partiton)
     info: ATADriveInfo,
+
+    /// The LBA sector the device starts at. Used for partitioning.
+    start_sector: usize,
+    /// The number of sectors the device contains. Used for partitioning.
+    sectors: usize,
 }
 
 impl AHCIDevice {
@@ -58,14 +71,18 @@ impl AHCIDevice {
             dealloc_frame(frame);
         }
 
-        Self { 
-            state: KMutex::new(DeviceState {
-                port,
-                available_commands: bitbox![1; n_commands],
-            }),
+        let state = KMutex::new(DeviceState {
+            port,
+            available_commands: bitbox![1; n_commands],
+        });
 
-            avail_commands_cv: KCondvar::new(),
-            info
+        Self { 
+            shared: Arc::new(Shared { state, avail_commands_cv: KCondvar::new() }),
+
+            start_sector: 0,
+            sectors: info.sectors(),
+
+            info,
         }
     }
 
@@ -81,7 +98,7 @@ impl AHCIDevice {
 
     /// Allocates an unused command slot. Blocks until one is available
     fn allocate_command<'a>(&'a self) -> CommandSlot<'a> {
-        let mut state = self.state.lock();
+        let mut state = self.shared.state.lock();
         loop {
             match state.available_commands.first_one() {
                 Some(i) => {    
@@ -96,7 +113,7 @@ impl AHCIDevice {
                     };
                 },
                 None => {
-                    state = self.avail_commands_cv.wait(state);
+                    state = self.shared.avail_commands_cv.wait(state);
                 },
             }
         }
@@ -132,9 +149,15 @@ impl CommandSlot<'_> {
     fn setup_command(&mut self, command: ATACommand, block: usize, count: usize)
         -> BlockDeviceResult<()> {
 
+        if count > self.device.sectors {
+            return Err(BlockDeviceError::InvalidBlock);
+        }
+
+        let block_actual = block + self.device.start_sector;
+
         const MASK: usize = (1usize << 24) - 1;
-        let lba_low = block & MASK;
-        let lba_high = (block >> 24) & MASK;
+        let lba_low = block_actual & MASK;
+        let lba_high = (block_actual >> 24) & MASK;
 
         let cmd_fis = FISRegisterH2D::new_with_type()
             .with_is_command(true)
@@ -296,5 +319,27 @@ impl BlockDevice for AHCIDevice {
         }
 
         Ok(())
+    }
+
+    fn partition(self) -> Option<Box<[Box<dyn BlockDevice>]>> {
+        let mbr_bytes: Box<[u8; 512]> = self.read_blocks(0, 1).unwrap()
+            .try_into().unwrap();
+        let mbr = MasterBootRecord::new(&mbr_bytes)?;
+        
+        let mut partitions: Vec<Box<dyn BlockDevice>> = Vec::new();
+        for entry in mbr.active_partitions() {
+            let device = AHCIDevice {
+                shared: Arc::clone(&self.shared),
+
+                start_sector: entry.lba_start() as usize,
+                sectors: entry.num_sectors() as usize,
+
+                info: self.info.clone(),
+            };
+
+            partitions.push(Box::new(device));
+        }
+
+        Some(partitions.into_boxed_slice())
     }
 }

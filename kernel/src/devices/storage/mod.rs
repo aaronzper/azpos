@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-/// Master Boot Record utilities
+/// Master Boot Record types
 pub mod mbr;
 /// AHCI (SATA) driver
 pub mod ahci;
@@ -25,6 +25,12 @@ pub trait BlockDevice {
     ///
     /// Blocks until the operation is complete.
     fn write_blocks(&mut self, index: usize, data: &[u8]) -> BlockDeviceResult<()>;
+
+    /// If the device has partitions, consume it and return `BlockDevice`s for
+    /// each one.
+    ///
+    /// If it doesn't, return `None`
+    fn partition(self) -> Option<Box<[Box<dyn BlockDevice>]>>;
 }
 
 pub type BlockDeviceResult<T> = Result<T, BlockDeviceError>;
@@ -37,6 +43,9 @@ pub enum BlockDeviceError {
     /// Could not allocate space for a contigous physical buffer, or otherwise
     /// out of memory
     OutOfMemory,
+    /// The block index given was invalid, or the count was past the number of
+    /// blocks on the device
+    InvalidBlock,
     /// The operation failed to read or write as many bytes as expected
     OperationFailed { transferred: usize, expected: usize },
 }
