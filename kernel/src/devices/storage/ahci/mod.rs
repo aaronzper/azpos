@@ -36,9 +36,22 @@ const MAX_COMMANDS_PER_PORT: u8 = 8;
 /// Cant be more than 0xFFFF
 const PRDT_ENTRIES_PER_COMMAND: u16 = 16;
 
+pub struct AHCIDeviceEntry {
+    /// The actual device entry. `None` if its in use
+    device: Option<AHCIDevice>,
+}
+
+impl AHCIDeviceEntry {
+    /// Gives ownership of the actual device to the caller. Returns `None`
+    /// if the device has already been taken.
+    pub fn take_device(&mut self) -> Option<AHCIDevice> {
+        self.device.take()
+    }
+}
+
 pub struct AHCIController {
     base_mem_register: &'static mut AHCIBaseMemoryReg,
-    devices: Box<[AHCIDevice]>,
+    devices: Box<[AHCIDeviceEntry]>,
 }
 
 impl AHCIController {
@@ -109,7 +122,8 @@ impl AHCIController {
             }
             
             let device = AHCIDevice::new(port, commands_per_port as usize);
-            devices.push(device);
+            let entry = AHCIDeviceEntry { device: Some(device), };
+            devices.push(entry);
         }
 
         bmr.set_interrupts(true);
@@ -119,7 +133,7 @@ impl AHCIController {
         })
     }
 
-    pub fn devices_mut(&mut self) -> &mut [AHCIDevice] {
+    pub fn devices(&mut self) -> &mut Box<[AHCIDeviceEntry]> {
         &mut self.devices
     }
 }

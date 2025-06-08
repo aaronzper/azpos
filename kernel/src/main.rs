@@ -70,19 +70,10 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
         .expect("No PCI storage device");
     let mut ahci = AHCIController::new(ahci_pci).unwrap();
 
-    let device = &mut ahci.devices_mut()[0];
+    let device = ahci.devices()[0].take_device().unwrap();
+    let part = &mut device.partition().unwrap()[1];
 
-    let mbr = MasterBootRecord::new(
-        (*device.read_blocks(0, 1).unwrap()).try_into().unwrap()
-    ).unwrap();
-    println!("Active Partitions:");
-    for part in mbr.active_partitions() {
-        let start = part.lba_start();
-        let end = start + part.num_sectors();
-        println!("{:#X}\t-> {:#X}\t({:?})", start, end, part.partition_type());
-    }
-    panic!();
-    let fs = FATFilesystem::mount(device).unwrap();
+    let fs = FATFilesystem::mount(part.as_mut()).unwrap();
 
     init_interrupts();
 
