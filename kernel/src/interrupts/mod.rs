@@ -15,8 +15,8 @@ const STACK_SIZE: usize = PAGE_SIZE as usize * 4;
 static mut DOUBLE_FAULT_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 const DOUBLE_FAULT_STACK_I: usize = 0;
 
-static mut TIMER_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
-const TIMER_STACK_I: usize = 1;
+static mut PIC_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+const PIC_STACK_I: usize = 1;
 
 fn stack_end(stack: *const [u8; STACK_SIZE]) -> VirtAddr {
     let top = stack as usize + STACK_SIZE;
@@ -39,15 +39,17 @@ lazy_static! {
         let mut idt = InterruptDescriptorTable::new();
 
         idt.breakpoint.set_handler_fn(handlers::breakpoint);
-        idt[PICInterrupt::Keyboard as u8].set_handler_fn(handlers::keyboard);
 
         unsafe {
             idt.double_fault.set_handler_fn(handlers::double_fault)
                 .set_stack_index(DOUBLE_FAULT_STACK_I as u16);
 
+            idt[PICInterrupt::Keyboard as u8].set_handler_fn(handlers::keyboard)
+                .set_stack_index(PIC_STACK_I as u16);
+
             let timer_addr = VirtAddr::new(handlers::timer as u64);
             idt[PICInterrupt::Timer as u8].set_handler_addr(timer_addr)
-                .set_stack_index(TIMER_STACK_I as u16);
+                .set_stack_index(PIC_STACK_I as u16);
         }
 
         idt
@@ -58,8 +60,8 @@ lazy_static! {
 
         tss.interrupt_stack_table[DOUBLE_FAULT_STACK_I] = 
             stack_end(&raw const DOUBLE_FAULT_STACK);
-        tss.interrupt_stack_table[TIMER_STACK_I] = 
-            stack_end(&raw const TIMER_STACK);
+        tss.interrupt_stack_table[PIC_STACK_I] = 
+            stack_end(&raw const PIC_STACK);
 
         tss
     };
