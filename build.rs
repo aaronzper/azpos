@@ -1,8 +1,8 @@
-use std::{fs::{self, File, OpenOptions}, io::Write, path::{Path, PathBuf}};
+use std::{fs::{self, File, OpenOptions}, io::Write, path::PathBuf};
 
 use bootloader::BootConfig;
 use fatfs::{FileSystem, FormatVolumeOptions, FsOptions};
-use fscommon::{BufStream, StreamSlice};
+use fscommon::StreamSlice;
 use mbrman::{MBRPartitionEntry, BOOT_ACTIVE, CHS, MBR};
 
 const SECTOR_SZ: usize = 512;

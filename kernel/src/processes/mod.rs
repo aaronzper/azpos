@@ -1,12 +1,11 @@
-use core::any::Any;
 
 use alloc::{boxed::Box, collections::btree_map::BTreeMap, slice, string::String};
-use elf::{abi::ET_REL, endian::NativeEndian, ElfBytes};
+use elf::{endian::NativeEndian, ElfBytes};
 use elfdefs::{ELF_ET_EXEC, ELF_ET_REL};
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::{registers::rflags::RFlags, structures::{idt::InterruptStackFrameValue, paging::Page}, VirtAddr};
-use crate::{interrupts::GDT, memory::{user::{alloc_user_pages, UserMemoryFlags, USER_END_ADDR}, SizedPage, PAGE_SIZE}, scheduling::{thread_yield, threads::Thread, SCHEDULER}};
+use crate::{interrupts::GDT, memory::{user::{alloc_user_pages, UserMemoryFlags, USER_END_ADDR}, SizedPage, PAGE_SIZE}, scheduling::{threads::Thread, SCHEDULER}};
 
 mod process;
 pub use process::{ProcessID, Process};
@@ -78,8 +77,6 @@ pub fn spawn_proc(name: String, elf_data: Box<[u8]>) -> Option<ProcessID> {
 
     let t = Thread::new_thread(move || {
         let int_stack = {
-            println!("Hi from proc {pid}");
-
             let elf = ElfBytes::<NativeEndian>::minimal_parse(&elf_data)
                 .unwrap();
 

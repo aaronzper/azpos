@@ -1,9 +1,8 @@
-use core::ascii;
 
 use alloc::{boxed::Box, format, string::String};
 use boot_record::FATBootRecord;
 use directories::FATDirectory;
-use fat::{FATEntry, FileAllocationTable};
+use fat::FileAllocationTable;
 use crate::{devices::storage::BlockDevice, filesystem::{FilePath, FileSystemError}};
 use super::{FileMetadata, FileSystem, FileSystemResult};
 
