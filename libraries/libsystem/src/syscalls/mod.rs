@@ -1,8 +1,7 @@
 use core::arch::asm;
+use libsci::Syscall;
 
-use crate::Syscall;
-
-pub extern "C" fn make_syscall(syscall: Syscall, arg1: u64, arg2: u64) -> u64 {
+extern "C" fn make_syscall(syscall: Syscall, arg1: u64, arg2: u64) -> u64 {
     let rax: u64;
     unsafe {
         asm!(
@@ -22,4 +21,10 @@ pub extern "C" fn make_syscall(syscall: Syscall, arg1: u64, arg2: u64) -> u64 {
     };
 
     rax
+}
+
+pub fn print(msg: &str) {
+    let ptr = msg.as_ptr() as u64;
+    let len = msg.len() as u64;
+    make_syscall(Syscall::Print, ptr, len);
 }

@@ -1,0 +1,7 @@
+[package]
+name = "libsci"
+description = "System Call Interface Library. Holds common definitions and structures shared by the kernel and processes vis-a-vis the SCI."
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]

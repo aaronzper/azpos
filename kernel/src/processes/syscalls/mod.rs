@@ -1,6 +1,6 @@
 use core::arch::global_asm;
 use alloc::{borrow::ToOwned, slice, string::String};
-use libsyscall::Syscall;
+use libsci::Syscall;
 use x86_64::{registers::{control::{Efer, EferFlags}, model_specific::{GsBase, KernelGsBase, LStar, Star}}, VirtAddr};
 use crate::{interrupts::GDT, scheduling::{thread_yield, SCHEDULER}};
 
