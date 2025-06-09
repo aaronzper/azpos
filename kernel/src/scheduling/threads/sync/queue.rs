@@ -6,6 +6,7 @@ pub struct Buffer<T, const S: usize> {
     data: UnsafeCell<[MaybeUninit<T>; S]>,
     head: AtomicUsize,
     tail: AtomicUsize,
+    len: AtomicUsize,
 
     reader_waiting: AtomicBool,
     readable_mtx: KMutex<()>,
@@ -24,6 +25,7 @@ impl<T, const S: usize> Buffer<T, S> {
             data: UnsafeCell::new(buffer),
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
+            len: AtomicUsize::new(0),
 
             reader_waiting: AtomicBool::new(false),
             readable_mtx: KMutex::new(()),
@@ -55,16 +57,23 @@ impl<T, const S: usize> Buffer<T, S> {
 
     /// Writes a value to the buffer, overwriting the oldest one if full
     pub fn push(&self, value: T) {
+        let len = self.len.load(Ordering::Acquire) + 1;
         let tail = self.tail.load(Ordering::Relaxed);
         let next = (tail + 1) % S;
 
         let head = self.head.load(Ordering::Acquire);
-        if next == head { // Push the head if overflow
+        if tail == head { // Push the head if overflow
             self.head.store((head + 1) % S, Ordering::Release);
         }
 
         self.set_index(tail, value);
         self.tail.store(next, Ordering::Release);
+
+        // Once len hits the size of the buffer, dont increase it further cause
+        // at this poitn we're overwriting, not adding
+        if len <= S {
+            self.len.store(len, Ordering::Release);
+        }
 
         if self.reader_waiting.swap(false, Ordering::Acquire) {
             self.readable.notify_all();
@@ -74,16 +83,17 @@ impl<T, const S: usize> Buffer<T, S> {
     /// Pops off the value from the start of the buffer. Returns `None` if
     /// there's nothing to be read
     pub fn try_pop(&self) -> Option<T> {
-        let head = self.head.load(Ordering::Relaxed);
-        let tail = self.tail.load(Ordering::Acquire);
-
-        if head == tail {
+        let len = self.len.load(Ordering::Acquire);
+        if len == 0 {
             return None;
         }
+
+        let head = self.head.load(Ordering::Relaxed);
 
         let val = unsafe { self.get_index(head) };
         let next = (head + 1) % S;
         self.head.store(next, Ordering::Release);
+        self.len.store(len - 1, Ordering::Release);
 
         Some(val)
     }
