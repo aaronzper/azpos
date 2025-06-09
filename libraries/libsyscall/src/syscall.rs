@@ -2,7 +2,7 @@ use core::arch::asm;
 
 use crate::Syscall;
 
-pub extern "C" fn make_syscall(syscall: Syscall) -> u64 {
+pub extern "C" fn make_syscall(syscall: Syscall, arg1: u64, arg2: u64) -> u64 {
     let rax: u64;
     unsafe {
         asm!(

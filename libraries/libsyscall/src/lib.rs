@@ -12,4 +12,6 @@ pub enum Syscall {
     Yield,
     /// Testing call to just make sure it works
     TestPing,
+    /// Prints the string pointer at arg1 with len arg2
+    Print,
 }
