@@ -84,8 +84,8 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     let adam = spawn_proc("adam".to_string(), elf_data.clone()).unwrap();
     let adam2 = spawn_proc("adam".to_string(), elf_data).unwrap();
 
-    init_interrupts();
     init_syscalls();
+    init_interrupts();
 
     thread_yield();
 
