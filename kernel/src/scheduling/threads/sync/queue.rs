@@ -1,0 +1,82 @@
+use core::{cell::UnsafeCell, mem::MaybeUninit, sync::atomic::{AtomicUsize, Ordering}};
+
+/// A lockless single-consumer/single-producer FIFO ring buffer.
+pub struct Buffer<T, const S: usize> {
+    data: UnsafeCell<[MaybeUninit<T>; S]>,
+    head: AtomicUsize,
+    tail: AtomicUsize,
+}
+
+unsafe impl<T: Send, const S: usize> Sync for Buffer<T, S> {}
+unsafe impl<T: Send, const S: usize> Send for Buffer<T, S> {}
+
+
+impl<T, const S: usize> Buffer<T, S> {
+    pub fn new() -> Self {
+        let buffer = [ const { MaybeUninit::<T>::uninit() }; S];
+        
+        Self {
+            data: UnsafeCell::new(buffer),
+            head: AtomicUsize::new(0),
+            tail: AtomicUsize::new(0),
+        }
+    }
+
+    unsafe fn get_index(&self, idx: usize) -> T {
+        assert!(idx < S);
+
+        let ptr = self.data.get() as *mut MaybeUninit<T>;
+
+        unsafe { 
+            ptr.add(idx).as_ref().unwrap().assume_init_read()
+        }
+    }
+
+    fn set_index(&self, idx: usize, val: T) {
+        assert!(idx < S);
+
+        let ptr = self.data.get() as *mut MaybeUninit<T>;
+
+        let val_mut = unsafe { 
+            ptr.add(idx).as_mut().unwrap()
+        };
+
+        *val_mut = MaybeUninit::new(val);
+    }
+
+    /// Writes a value to the buffer, overwriting the oldest one if full
+    pub fn push(&self, value: T) {
+        let tail = self.tail.load(Ordering::Relaxed);
+        let next = (tail + 1) % S;
+
+        let head = self.head.load(Ordering::Acquire);
+        if next == head { // Push the head if overflow
+            self.head.store((head + 1) % S, Ordering::Release);
+        }
+
+        self.set_index(tail, value);
+        self.tail.store(next, Ordering::Release);
+    }
+
+    /// Pops off the value from the start of the buffer. Returns `None` if
+    /// there's nothing to be read
+    pub fn try_pop(&self) -> Option<T> {
+        let head = self.head.load(Ordering::Relaxed);
+        let tail = self.tail.load(Ordering::Acquire);
+        if head == tail {
+            return None;
+        }
+
+        let val = unsafe { self.get_index(head) };
+        let next = (head + 1) % S;
+        self.head.store(next, Ordering::Release);
+
+        Some(val)
+    }
+}
+
+impl<T, const S: usize> Drop for Buffer<T, S> {
+    fn drop(&mut self) {
+        while self.try_pop().is_some() {}
+    }
+}
