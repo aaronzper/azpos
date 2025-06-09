@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 use scancode::Scancode;
-use crate::scheduling::threads::sync::{KCondvar, KIntMutex, KMutex};
+use crate::scheduling::threads::sync::{Buffer, KCondvar, KIntMutex, KMutex};
 use x86_64::instructions::port::Port;
 
 mod scancode;
@@ -8,8 +8,7 @@ mod scancode;
 const KEYBOARD_PORT: u16 = 0x60;
 
 pub static KEYBOARD: KIntMutex<Keyboard> = KIntMutex::new(Keyboard::new());
-pub static SCANCODES: KMutex<Vec<Scancode>> = KMutex::new(Vec::new());
-pub static SCANCODE_AVAIL: KCondvar = KCondvar::new();
+pub static SCANCODES: Buffer<Scancode, 64> = Buffer::new();
 
 /// A PS/2 keyboard
 pub struct Keyboard {
@@ -36,23 +35,8 @@ impl Keyboard {
 }
 
 pub fn keyboard_listener() {
-    let mut buf = Vec::new();
     loop {
-        {
-            let mut scodes = SCANCODES.lock();
-
-            while scodes.is_empty() {
-                scodes = SCANCODE_AVAIL.wait(scodes);
-            }
-
-            buf.extend_from_slice(scodes.as_slice());
-            scodes.clear();
-        }
-
-        for scode in &buf {
-            println!("{:?}", scode);
-        }
-
-        buf.clear();
+        let scode = SCANCODES.pop();
+        println!("{:?}", scode);
     }
 }

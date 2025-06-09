@@ -17,7 +17,7 @@ unsafe impl<T: Send, const S: usize> Send for Buffer<T, S> {}
 
 
 impl<T, const S: usize> Buffer<T, S> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         let buffer = [ const { MaybeUninit::<T>::uninit() }; S];
         
         Self {
