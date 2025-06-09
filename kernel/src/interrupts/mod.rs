@@ -6,9 +6,6 @@ use crate::{devices::pic::{self, PICInterrupt}, memory::PAGE_SIZE};
 
 mod handlers;
 
-/// Runs a function without interrupting
-pub use x86_64::instructions::interrupts::without_interrupts;
-
 const STACK_SIZE: usize = PAGE_SIZE as usize * 4;
 
 // Needs to be mut so that the stack isn't put into RODATA
@@ -89,6 +86,11 @@ pub fn enable_interrupts() {
 /// Disables hardware interrupts
 pub fn disable_interrupts() {
     x86_64::instructions::interrupts::disable();
+}
+
+/// Returns whether interrupts are enabled
+pub fn interrupts_enabled() -> bool {
+    x86_64::instructions::interrupts::are_enabled()
 }
 
 /// Put the CPU to sleep until next interrupt

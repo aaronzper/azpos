@@ -1,13 +1,13 @@
 use alloc::vec::Vec;
 use scancode::Scancode;
-use crate::scheduling::threads::sync::{KCondvar, KMutex};
+use crate::scheduling::threads::sync::{KCondvar, KIntMutex, KMutex};
 use x86_64::instructions::port::Port;
 
 mod scancode;
 
 const KEYBOARD_PORT: u16 = 0x60;
 
-pub static KEYBOARD: KMutex<Keyboard> = KMutex::new(Keyboard::new());
+pub static KEYBOARD: KIntMutex<Keyboard> = KIntMutex::new(Keyboard::new());
 pub static SCANCODES: KMutex<Vec<Scancode>> = KMutex::new(Vec::new());
 pub static SCANCODE_AVAIL: KCondvar = KCondvar::new();
 

@@ -18,8 +18,6 @@ impl KCondvar {
     }
 
     /// Blocks the current thread until release by a call to `notify_all`.
-    ///
-    ///
     pub fn wait<'a, T>(&self, guard: KMutexGuard<'a, T>) -> KMutexGuard<'a, T> {
         let mut sched = SCHEDULER.lock();
 

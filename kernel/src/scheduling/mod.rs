@@ -1,8 +1,7 @@
 use core::cmp::Ordering;
 use alloc::vec::Vec;
 use lazy_static::lazy_static;
-use spin::Mutex;
-use threads::{state::CpuState, Thread, ThreadID, ThreadTable};
+use threads::{state::CpuState, sync::KIntMutex, Thread, ThreadID, ThreadTable};
 use x86_64::{registers::segmentation::GS, VirtAddr};
 use crate::{devices::pic::PICInterrupt, memory::user::USER_END_ADDR, processes::{syscalls::set_syscall_stack, PROCESSES}};
 
@@ -10,7 +9,7 @@ use crate::{devices::pic::PICInterrupt, memory::user::USER_END_ADDR, processes::
 pub mod threads;
 
 lazy_static! {
-    pub static ref SCHEDULER: Mutex<Scheduler> = Mutex::new(Scheduler::new());
+    pub static ref SCHEDULER: KIntMutex<Scheduler> = KIntMutex::new(Scheduler::new());
 }
 
 fn wait_loop() {

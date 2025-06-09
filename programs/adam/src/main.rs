@@ -7,12 +7,10 @@ use libsyscall::syscall::make_syscall;
 
 #[unsafe(no_mangle)]
 pub fn _start() -> ! {
-    let mut i = 0;
+    let mut i = 1;
     loop {
-        make_syscall(libsyscall::Syscall::TestPing);
-
-        if i % 10 == 0 {
-            make_syscall(libsyscall::Syscall::Yield);
+        if i % 10000000 == 0 {
+            make_syscall(libsyscall::Syscall::TestPing);
             i = 0;
         } 
         
