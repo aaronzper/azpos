@@ -1,10 +1,15 @@
-use core::{cell::UnsafeCell, mem::MaybeUninit, sync::atomic::{AtomicUsize, Ordering}};
+use core::{cell::UnsafeCell, mem::MaybeUninit, sync::atomic::{AtomicBool, AtomicUsize, Ordering}};
+use super::{KCondvar, KMutex};
 
 /// A lockless single-consumer/single-producer FIFO ring buffer.
 pub struct Buffer<T, const S: usize> {
     data: UnsafeCell<[MaybeUninit<T>; S]>,
     head: AtomicUsize,
     tail: AtomicUsize,
+
+    reader_waiting: AtomicBool,
+    readable_mtx: KMutex<()>,
+    readable: KCondvar,
 }
 
 unsafe impl<T: Send, const S: usize> Sync for Buffer<T, S> {}
@@ -19,6 +24,10 @@ impl<T, const S: usize> Buffer<T, S> {
             data: UnsafeCell::new(buffer),
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
+
+            reader_waiting: AtomicBool::new(false),
+            readable_mtx: KMutex::new(()),
+            readable: KCondvar::new(),
         }
     }
 
@@ -56,6 +65,10 @@ impl<T, const S: usize> Buffer<T, S> {
 
         self.set_index(tail, value);
         self.tail.store(next, Ordering::Release);
+
+        if self.reader_waiting.swap(false, Ordering::Acquire) {
+            self.readable.notify_all();
+        }
     }
 
     /// Pops off the value from the start of the buffer. Returns `None` if
@@ -63,6 +76,7 @@ impl<T, const S: usize> Buffer<T, S> {
     pub fn try_pop(&self) -> Option<T> {
         let head = self.head.load(Ordering::Relaxed);
         let tail = self.tail.load(Ordering::Acquire);
+
         if head == tail {
             return None;
         }
@@ -72,6 +86,24 @@ impl<T, const S: usize> Buffer<T, S> {
         self.head.store(next, Ordering::Release);
 
         Some(val)
+    }
+
+    /// Pops off the value from the start of the buffer. Blocks until there's
+    /// something to be read
+    pub fn pop(&self) -> T {
+        loop {
+            match self.try_pop() {
+                Some(v) => break v,
+                None => {
+                    self.reader_waiting.store(true, Ordering::Release);
+                    let lock = self.readable_mtx.lock();
+                    match self.try_pop() {
+                        Some(v) => break v,
+                        None => self.readable.wait(lock),
+                    };
+                },
+            }
+        }
     }
 }
 
