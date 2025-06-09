@@ -14,7 +14,7 @@ use filesystem::{fat::FATFilesystem, FilePath, FileSystem};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
-use processes::{init_syscalls, spawn_proc};
+use processes::{spawn_proc, syscalls::init_syscalls};
 use scheduling::{thread_yield, threads::Thread, SCHEDULER};
 
 #[macro_use]
@@ -81,7 +81,8 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     let exe = FilePath::new("/programs/adam.exe".to_string()).unwrap();
     let elf_data = fs.read_all(&exe).unwrap();
 
-    let adam = spawn_proc("adam".to_string(), elf_data).unwrap();
+    let adam = spawn_proc("adam".to_string(), elf_data.clone()).unwrap();
+    let adam2 = spawn_proc("adam".to_string(), elf_data).unwrap();
 
     init_interrupts();
     init_syscalls();

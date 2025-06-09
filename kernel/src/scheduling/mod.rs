@@ -3,7 +3,8 @@ use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use threads::{state::CpuState, Thread, ThreadID, ThreadTable};
-use crate::{devices::pic::PICInterrupt, processes::PROCESSES};
+use x86_64::{registers::segmentation::GS, VirtAddr};
+use crate::{devices::pic::PICInterrupt, memory::user::USER_END_ADDR, processes::{syscalls::set_syscall_stack, PROCESSES}};
 
 /// Threads
 pub mod threads;
@@ -101,8 +102,9 @@ impl Scheduler {
             })
             .cloned();
 
-        // Save state of the old thread
-        match self.status {
+        // Save state of the old thread, and track if we're coming out of
+        // userland (so we know whether to swap GS)
+        let was_user = match self.status {
             SchedulerState::Running(tid) => {
                 let old_t = self.get_thread_mut(tid).unwrap();
                 old_t.state = state.clone();
@@ -112,17 +114,27 @@ impl Scheduler {
                         let mut procs_lock = PROCESSES.lock();
                         let old_p = procs_lock.get_proc_mut(old_pid).unwrap();
                         old_p.save_page_tables();
+
+                        // User process threads are usually in userland, but
+                        // if they get preempted (or yield) in a syscall,
+                        // they're coming from kernelland, so check RIP to be
+                        // sure
+                        old_t.state.is_user()
                     },
 
-                    None => (),
+                    // Kernel threads are (obviously) always in kernelland
+                    None => false,
                 }
             },
 
             SchedulerState::Idle => {
                 self.idle_thread.state = state.clone();
+                // Idle thread is always in kernalland
+                false
             },
 
-            SchedulerState::NotStarted => (),
+            // If we're not started then obviously not coming form userlland
+            SchedulerState::NotStarted => false,
         };
 
         // Load in state of the new thread
@@ -136,6 +148,9 @@ impl Scheduler {
                         let mut procs_lock = PROCESSES.lock();
                         let new_p = procs_lock.get_proc_mut(new_pid).unwrap();
                         new_p.load_page_tables();
+
+                        // Save to GS for syscalls
+                        set_syscall_stack(new_t.stack_top());
                     },
 
                     None => (),
@@ -150,6 +165,12 @@ impl Scheduler {
         };
         new_t.add_run();
         *state = new_t.state.clone();
+
+        // If we're leaving user and entering kernel, or vice versa,
+        // swap GS
+        if new_t.state.is_user() != was_user {
+            unsafe { GS::swap() };
+        }
     }
 
     /// Blocks the given thread and returns a `BlockedThread`.

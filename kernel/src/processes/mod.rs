@@ -3,7 +3,7 @@ use alloc::{boxed::Box, collections::btree_map::BTreeMap, slice, string::String}
 use elf::{abi::{ET_EXEC, ET_REL, PT_LOAD}, endian::NativeEndian, ElfBytes};
 use lazy_static::lazy_static;
 use spin::Mutex;
-use x86_64::{registers::rflags::RFlags, structures::{idt::InterruptStackFrameValue, paging::Page}, VirtAddr};
+use x86_64::{registers::{rflags::RFlags, segmentation::GS}, structures::{idt::InterruptStackFrameValue, paging::Page}, VirtAddr};
 use crate::{interrupts::GDT, memory::{user::{alloc_user_pages, UserMemoryFlags, USER_END_ADDR}, SizedPage, PAGE_SIZE}, scheduling::{threads::Thread, SCHEDULER}};
 
 mod process;
@@ -11,8 +11,7 @@ pub use process::{ProcessID, Process};
 /// ELF helper definitions
 pub mod elfdefs;
 /// Syscalls!
-mod syscalls;
-pub use syscalls::init_syscalls;
+pub mod syscalls;
 
 lazy_static! {
     pub static ref PROCESSES: Mutex<ProcessTable> =
@@ -135,6 +134,8 @@ pub fn spawn_proc(name: String, elf_data: Box<[u8]>) -> Option<ProcessID> {
 
         // Jump to userland!
         unsafe {
+            // Swap GS every time we transition from kernelland to userland
+            GS::swap();
             int_stack.iretq();
         }
 

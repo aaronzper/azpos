@@ -7,8 +7,9 @@ use libsyscall::syscall::make_syscall;
 
 #[unsafe(no_mangle)]
 pub fn _start() -> ! {
-    make_syscall(libsyscall::Syscall::TestPing);
-    loop {}
+    loop {
+        make_syscall(libsyscall::Syscall::TestPing);
+    }
 }
 
 #[panic_handler]

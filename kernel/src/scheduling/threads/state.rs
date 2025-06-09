@@ -1,6 +1,6 @@
 use x86_64::{registers::rflags::RFlags, structures::idt::InterruptStackFrameValue, VirtAddr};
 
-use crate::interrupts::GDT;
+use crate::{interrupts::GDT, memory::user::USER_END_ADDR};
 
 #[derive(Clone, Debug)]
 #[repr(C)]
@@ -55,5 +55,10 @@ impl CpuState {
                 GDT.data
             ),
         }
+    }
+
+    /// Returns whether the state is currently at a userland RIP
+    pub fn is_user(&self) -> bool {
+        self.int_stack.instruction_pointer.as_u64() <= USER_END_ADDR
     }
 }

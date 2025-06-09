@@ -69,6 +69,11 @@ impl Thread {
     pub fn proccess(&self) -> Option<ProcessID> {
         self.process
     }
+
+    /// Returns the address of the top of the thread's kernel stack
+    pub fn stack_top(&self) -> VirtAddr {
+        self.kstack.top()
+    }
 }
 
 extern "C" fn run_thread<F, T>(entrypoint: &mut F) -> !
