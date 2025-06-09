@@ -1,7 +1,6 @@
 
 use alloc::{boxed::Box, collections::btree_map::BTreeMap, slice, string::String};
-use elf::{endian::NativeEndian, ElfBytes};
-use elfdefs::{ELF_ET_EXEC, ELF_ET_REL};
+use elf::{abi::{ET_EXEC, ET_REL, PT_LOAD}, endian::NativeEndian, ElfBytes};
 use lazy_static::lazy_static;
 use spin::Mutex;
 use x86_64::{registers::rflags::RFlags, structures::{idt::InterruptStackFrameValue, paging::Page}, VirtAddr};
@@ -69,7 +68,7 @@ pub fn spawn_proc(name: String, elf_data: Box<[u8]>) -> Option<ProcessID> {
     // (actual parsing happens in the thread below)
     let elf = ElfBytes::<NativeEndian>::minimal_parse(&elf_data).ok()?;
     elf.segments()?;
-    if elf.ehdr.e_type & ELF_ET_EXEC == 0 { return None; }
+    if elf.ehdr.e_type & ET_EXEC == 0 { return None; }
     if elf.ehdr.e_entry == 0 { return None; }
 
     let proc = Process::new(name);
@@ -80,14 +79,14 @@ pub fn spawn_proc(name: String, elf_data: Box<[u8]>) -> Option<ProcessID> {
             let elf = ElfBytes::<NativeEndian>::minimal_parse(&elf_data)
                 .unwrap();
 
-            let va_offset = if elf.ehdr.e_type & ELF_ET_REL != 0 {
+            let va_offset = if elf.ehdr.e_type & ET_REL != 0 {
                 PAGE_SIZE
             } else {
                 0
             };
 
             for segment in elf.segments().unwrap() {
-                if segment.p_type == elfdefs::ELF_PT_LOAD {
+                if segment.p_type == PT_LOAD {
                     let va_start = VirtAddr::new(segment.p_vaddr + va_offset);
                     let va_end = va_start + segment.p_memsz;
                     let first_page = SizedPage::containing_address(va_start);
