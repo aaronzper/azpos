@@ -3,11 +3,11 @@
 
 use core::{arch::asm, panic::PanicInfo};
 
+use libsyscall::syscall::make_syscall;
+
 #[unsafe(no_mangle)]
 pub fn _start() -> ! {
-    // Force a fault since this instruction isnt allowed in user mode (uncomment
-    // it to demonstrate)
-    //unsafe { asm!("cli") };
+    make_syscall(libsyscall::Syscall::TestPing);
     loop {}
 }
 

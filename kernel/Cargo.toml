@@ -7,6 +7,8 @@ edition = "2024"
 forced-target = "x86_64-unknown-none"
 
 [dependencies]
+libsyscall = { path = "../libraries/libsyscall" }
+
 bootloader_api = "0.11.10"
 x86_64 = "0.15.2"
 lazy_static = { version = "1.0", features = ["spin_no_std"] }

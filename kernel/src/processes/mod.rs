@@ -10,6 +10,9 @@ mod process;
 pub use process::{ProcessID, Process};
 /// ELF helper definitions
 pub mod elfdefs;
+/// Syscalls!
+mod syscalls;
+pub use syscalls::init_syscalls;
 
 lazy_static! {
     pub static ref PROCESSES: Mutex<ProcessTable> =

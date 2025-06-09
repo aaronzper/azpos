@@ -14,7 +14,7 @@ use filesystem::{fat::FATFilesystem, FilePath, FileSystem};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
-use processes::spawn_proc;
+use processes::{init_syscalls, spawn_proc};
 use scheduling::{thread_yield, threads::Thread, SCHEDULER};
 
 #[macro_use]
@@ -84,6 +84,7 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     let adam = spawn_proc("adam".to_string(), elf_data).unwrap();
 
     init_interrupts();
+    init_syscalls();
 
     thread_yield();
 

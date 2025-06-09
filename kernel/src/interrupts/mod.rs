@@ -69,11 +69,11 @@ lazy_static! {
     pub static ref GDT: GDTSegments = {
         let mut gdt = GlobalDescriptorTable::new();
         
+        // Segments need to be put into GDT in this order for STAR to work right
         let code = gdt.append(Descriptor::kernel_code_segment());
         let data = gdt.append(Descriptor::kernel_data_segment());
-
-        let user_code = gdt.append(Descriptor::user_code_segment());
         let user_data = gdt.append(Descriptor::user_data_segment());
+        let user_code = gdt.append(Descriptor::user_code_segment());
 
         let tss = gdt.append(Descriptor::tss_segment(&TSS));
 
