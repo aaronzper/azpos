@@ -8,6 +8,8 @@ pub mod syscall;
 #[derive(Debug, Copy, Clone)]
 /// The code for each syscall
 pub enum Syscall {
+    /// Yields control to the scheuler
+    Yield,
     /// Testing call to just make sure it works
     TestPing,
 }

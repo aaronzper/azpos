@@ -1,4 +1,5 @@
 use core::arch::global_asm;
+use libsyscall::Syscall;
 use x86_64::{registers::{control::{Efer, EferFlags}, model_specific::{GsBase, KernelGsBase, LStar, Star}}, VirtAddr};
 use crate::{interrupts::GDT, scheduling::{thread_yield, SCHEDULER}};
 
@@ -12,15 +13,18 @@ unsafe extern "C" {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn syscall() -> u64 {
-    {
-        let sched = SCHEDULER.lock();
-        let tid = sched.currently_running().unwrap();
-        let pid = sched.get_thread(tid).unwrap().proccess().unwrap();
-        println!("Syscall from PID {pid}!");
+extern "C" fn syscall(syscall: Syscall) -> u64 {
+    match syscall {
+        Syscall::Yield => { thread_yield(); 0 },
+        Syscall::TestPing => {
+            let sched = SCHEDULER.lock();
+            let tid = sched.currently_running().unwrap();
+            let pid = sched.get_thread(tid).unwrap().proccess().unwrap();
+            println!("Syscall from PID {pid}!");
+            613
+        },
+        _ => panic!("Invalid syscall type"),
     }
-    thread_yield();
-    return 613;
 }
 
 pub fn set_syscall_stack(top: VirtAddr) {
