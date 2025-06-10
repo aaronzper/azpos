@@ -9,6 +9,9 @@ syscall_entry:
     push r11 # Save caller RFLAGS
     sti
 
+    # Move second argument back to RCX
+    mov rcx, r8
+
     call syscall
 
     cli

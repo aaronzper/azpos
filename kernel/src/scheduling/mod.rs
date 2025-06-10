@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use threads::{state::CpuState, sync::KIntMutex, Thread, ThreadID, ThreadTable};
 use x86_64::{registers::segmentation::GS, VirtAddr};
-use crate::{devices::pic::PICInterrupt, memory::user::USER_END_ADDR, processes::{syscalls::set_syscall_stack, PROCESSES}};
+use crate::{devices::pic::PICInterrupt, memory::user::USER_END_ADDR, processes::{syscalls::set_syscall_stack, ProcessID, PROCESSES}};
 
 /// Threads
 pub mod threads;
@@ -186,6 +186,14 @@ impl Scheduler {
 
     fn unblock_thread(&mut self, thread: ThreadID) {
         self.runnable.push(thread);
+    }
+
+
+    /// Returns the currently running PID, if we're in a user thread. `None` otherwise.
+    pub fn current_proc(&self) -> Option<ProcessID> {
+        let tid = self.currently_running()?;
+        let t = self.get_thread(tid).unwrap();
+        t.proccess()
     }
 }
 

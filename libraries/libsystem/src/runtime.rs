@@ -1,6 +1,3 @@
-use alloc::format;
-
-use crate::syscalls::print;
 use core::{panic::PanicInfo};
 
 unsafe extern "C" { 
@@ -15,7 +12,6 @@ pub extern "C" fn _start() -> ! {
 }
 
 #[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    print(&format!("!! PANIC !! {info:#?}"));
+fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }

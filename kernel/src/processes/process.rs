@@ -1,4 +1,5 @@
-use alloc::string::String;
+use alloc::{boxed::Box, collections::btree_map::BTreeMap, string::String};
+use libsci::resources::{Resource, ResourceID};
 use x86_64::structures::paging::page_table::PageTableEntry;
 
 use crate::memory::current_pt;
@@ -11,10 +12,14 @@ pub type ProcessID = u32;
 pub struct Process {
     /// The process's name
     name: String,
+
     /// The lower (user) half of the L4PT for this process. This is copied into
     /// the lower half of the (universal) page table upon context switch. The
     /// upper half (kernel memory) doesn't change.
     user_page_table: [PageTableEntry; USER_PT_LEN],
+    
+    /// The Resources owned by the process
+    pub resources: BTreeMap<ResourceID, Box<dyn Resource + Send>>,
 }
 
 impl Process {
@@ -26,6 +31,7 @@ impl Process {
         Self {
             name,
             user_page_table: [const { PageTableEntry::new() }; USER_PT_LEN],
+            resources: BTreeMap::new(),
         }
     }
 
