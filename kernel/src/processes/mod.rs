@@ -104,10 +104,9 @@ pub fn spawn_proc(name: String, elf_data: Box<[u8]>) -> Option<ProcessID> {
                     let seg_data = elf.segment_data(&segment).unwrap();
                     seg_slice[0..seg_data.len()].copy_from_slice(seg_data);
 
-                    // zero the rest
-                    for i in seg_data.len()..seg_slice.len() {
-                        seg_slice[i] = 0;
-                    }
+                    // zero the rest of the segment (from the end of file data
+                    // to the end of the segment)
+                    seg_slice[seg_data.len()..].fill(0);
                 }
             }
 
