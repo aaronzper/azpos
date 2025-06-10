@@ -61,8 +61,6 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     let mut sched_lock = SCHEDULER.lock();
     sched_lock.add_thread(Thread::new_thread(keyboard_listener, None));
-
-    let sched_ptr = &raw mut sched_lock;
     drop(sched_lock); // Drop so not locked forever
 
     let pci = PCIController::new();
@@ -82,7 +80,6 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     let elf_data = fs.read_all(&exe).unwrap();
 
     let adam = spawn_proc("adam".to_string(), elf_data.clone()).unwrap();
-    let adam2 = spawn_proc("adam".to_string(), elf_data).unwrap();
 
     init_syscalls();
     init_interrupts();

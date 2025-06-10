@@ -32,14 +32,8 @@ impl Resource for LoggerResource {
         Err(ResourceError::Unsupported)
     }
 
-    // Temporary test version, will be unsupported long-term
-    fn read(&mut self, buf: &mut [u8]) -> libsci::resources::ResourceResult {
-        let src = "Hello world from a syscall".as_bytes();
-        
-        let len = min(src.len(), buf.len());
-        buf[0..len].clone_from_slice(&src[0..len]);
-
-        Ok(len as i64)
+    fn read(&mut self, _: &mut [u8]) -> libsci::resources::ResourceResult {
+        Err(ResourceError::Unsupported)
     }
 }
 

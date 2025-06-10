@@ -45,7 +45,7 @@ pub enum ResourceError {
     ///
     /// Encoded as a `-3`
     InvalidInput,
-    
+
     /// A non-standard error, the meaning of which may vary on a syscall-by-syscall
     /// basis
     ///
