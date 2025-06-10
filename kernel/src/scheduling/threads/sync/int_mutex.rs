@@ -1,4 +1,4 @@
-use core::{cell::{RefCell, RefMut, UnsafeCell}, ops::{Deref, DerefMut}};
+use core::ops::{Deref, DerefMut};
 use spin::{Mutex, MutexGuard};
 
 use crate::interrupts::{disable_interrupts, enable_interrupts, interrupts_enabled};

@@ -1,10 +1,8 @@
 use core::arch::global_asm;
-use alloc::{borrow::ToOwned, boxed::Box, slice, string::String};
+use alloc::slice;
 use libsci::{resources::ResourceID, Syscall};
-use resources::LoggerResource;
-use x86_64::{registers::{control::{Efer, EferFlags}, model_specific::{GsBase, KernelGsBase, LStar, Star}}, VirtAddr};
-use crate::{interrupts::GDT, scheduling::{thread_yield, SCHEDULER}};
-use super::PROCESSES;
+use x86_64::{registers::{control::{Efer, EferFlags}, model_specific::{GsBase, LStar, Star}}, VirtAddr};
+use crate::interrupts::GDT;
 
 /// System call handlers
 mod handlers;

@@ -3,7 +3,7 @@ use alloc::{boxed::Box, collections::btree_map::BTreeMap, slice, string::String}
 use elf::{abi::{ET_EXEC, ET_REL, PT_LOAD}, endian::NativeEndian, ElfBytes};
 use lazy_static::lazy_static;
 use x86_64::{registers::{rflags::RFlags, segmentation::GS}, structures::{idt::InterruptStackFrameValue, paging::Page}, VirtAddr};
-use crate::{interrupts::GDT, memory::{user::{alloc_user_pages, UserMemoryFlags, USER_END_ADDR}, SizedPage, PAGE_SIZE}, scheduling::{threads::{sync::KIntMutex, Thread}, Scheduler}, SCHEDULER};
+use crate::{interrupts::GDT, memory::{user::{alloc_user_pages, UserMemoryFlags, USER_END_ADDR}, SizedPage, PAGE_SIZE}, scheduling::threads::{sync::KIntMutex, Thread}, SCHEDULER};
 
 mod process;
 pub use process::{ProcessID, Process};

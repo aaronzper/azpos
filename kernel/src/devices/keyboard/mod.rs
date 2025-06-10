@@ -1,6 +1,5 @@
-use alloc::vec::Vec;
 use scancode::Scancode;
-use crate::scheduling::threads::sync::{Buffer, KCondvar, KIntMutex, KMutex};
+use crate::scheduling::threads::sync::{Buffer, KIntMutex};
 use x86_64::instructions::port::Port;
 
 mod scancode;

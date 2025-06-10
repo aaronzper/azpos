@@ -20,11 +20,10 @@ impl Resource for LoggerResource {
         let msg = match str::from_utf8(buffer) {
             Ok(s) => s,
             Err(e) => {
-                println!("{e:#?}");
                 return Err(ResourceError::InvalidInput);
             },
         };
-        println!("PID {pid}: {msg}");
+        println!("[PID {pid}] {msg}");
 
         Ok(msg.len() as u64)
     }
@@ -33,7 +32,7 @@ impl Resource for LoggerResource {
         Err(ResourceError::Unsupported)
     }
 
-    /// Temporary test version, will be unsupported long-term
+    // Temporary test version, will be unsupported long-term
     fn read(&mut self, buf: &mut [u8]) -> libsci::resources::ResourceResult<u64> {
         let src = "Hello world from a syscall".as_bytes();
         

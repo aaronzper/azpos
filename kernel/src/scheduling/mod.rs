@@ -2,8 +2,8 @@ use core::cmp::Ordering;
 use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use threads::{state::CpuState, sync::KIntMutex, Thread, ThreadID, ThreadTable};
-use x86_64::{registers::segmentation::GS, VirtAddr};
-use crate::{devices::pic::PICInterrupt, memory::user::USER_END_ADDR, processes::{syscalls::set_syscall_stack, ProcessID, PROCESSES}};
+use x86_64::registers::segmentation::GS;
+use crate::{devices::pic::PICInterrupt, processes::{syscalls::set_syscall_stack, ProcessID, PROCESSES}};
 
 /// Threads
 pub mod threads;
