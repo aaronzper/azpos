@@ -6,6 +6,8 @@ use x86_64::{registers::{control::{Efer, EferFlags}, model_specific::{GsBase, Ke
 use crate::{interrupts::GDT, scheduling::{thread_yield, SCHEDULER}};
 use super::PROCESSES;
 
+/// System call handlers
+mod handlers;
 /// Various `Resource` implementations for kernel things that are exposed to
 /// users
 mod resources;
@@ -22,52 +24,22 @@ unsafe extern "C" {
 #[unsafe(no_mangle)]
 extern "C" fn syscall(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> u64 {
     match syscall {
-        Syscall::Yield => { 
-            thread_yield();
-            0
-        },
+        Syscall::Yield => handlers::sys_yield(),
 
-        Syscall::Close => {
-            let pid = SCHEDULER.lock().current_proc().unwrap();
-            let mut procs = PROCESSES.lock();
-            let p = procs.get_proc_mut(pid).unwrap();
-            let rid = arg1 as ResourceID;
-            p.resources.remove(&rid);
+        Syscall::Close => handlers::sys_close(arg1 as ResourceID),
 
-            0
-        }
-
-        Syscall::GetLogger => {
-            let pid = SCHEDULER.lock().current_proc().unwrap();
-            let mut procs = PROCESSES.lock();
-            let p = procs.get_proc_mut(pid).unwrap();
-
-            // TODO: Assign RID dynamically
-            let rid = 123;
-            p.resources.insert(rid, Box::new(LoggerResource::new()));
-
-            rid as u64
-        }
+        Syscall::GetLogger => handlers::sys_get_logger(),
 
         Syscall::Read => todo!(),
 
         Syscall::Write => {
-            let pid = SCHEDULER.lock().current_proc().unwrap();
-            let mut procs = PROCESSES.lock();
-            let p = procs.get_proc_mut(pid).unwrap();
-
             let rid = arg1 as ResourceID;
-            let resource = match p.resources.get_mut(&rid) {
-                Some(r) => r,
-                None => return -1i64 as u64,
-            };
-
             let ptr = arg2 as *const u8;
             let len = arg3 as usize;
             let buf = unsafe { slice::from_raw_parts(ptr, len) };
-
-            resource.write(buf).unwrap()
-        }
+            
+            handlers::sys_write(rid, buf).unwrap()
+        },
 
         Syscall::Seek => todo!(),
 
@@ -80,12 +52,16 @@ pub fn set_syscall_stack(top: VirtAddr) {
     unsafe { CURRENT_USER_KSTACK_PTR = top_u64; }
 }
 
-/// Sets up the SYSCALL/SYSRET instructions by writing to STAR & LSTAR
+/// Sets up the SYSCALL/SYSRET instructions
 pub fn init_syscalls() {
+    // Write user and kernel segments to STAR
     Star::write(GDT.user_code, GDT.user_data, GDT.code, GDT.data).unwrap();
+    // Write syscall handlers address to LSTAR
     LStar::write(VirtAddr::from_ptr(syscall_entry as *const ()));
+    // Write user kstack address to GS_Base (will be swapped when entering userland)
     GsBase::write(VirtAddr::from_ptr(&raw const CURRENT_USER_KSTACK_PTR));
 
+    // Enable syscall extension
     let flags = EferFlags::SYSTEM_CALL_EXTENSIONS | Efer::read();
     unsafe { Efer::write(flags) };
 }
