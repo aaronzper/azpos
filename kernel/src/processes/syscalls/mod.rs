@@ -1,6 +1,6 @@
 use core::arch::global_asm;
 use alloc::slice;
-use libsci::{resources::ResourceID, Syscall};
+use libsci::{resources::{result_to_rax, ResourceID}, Syscall};
 use x86_64::{registers::{control::{Efer, EferFlags}, model_specific::{GsBase, LStar, Star}}, VirtAddr};
 use crate::interrupts::GDT;
 
@@ -20,21 +20,22 @@ unsafe extern "C" {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn syscall(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> u64 {
+extern "C" fn syscall(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> i64 {
     match syscall {
         Syscall::Yield => handlers::sys_yield(),
 
-        Syscall::Close => handlers::sys_close(arg1 as ResourceID),
+        Syscall::Close =>
+            result_to_rax(handlers::sys_close(arg1 as ResourceID)),
 
-        Syscall::GetLogger => handlers::sys_get_logger(),
+        Syscall::GetLogger => handlers::sys_get_logger() as i64,
 
         Syscall::Read => {
             let rid = arg1 as ResourceID;
             let ptr = arg2 as *mut u8;
             let len = arg3 as usize;
             let buf = unsafe { slice::from_raw_parts_mut(ptr, len) };
-            
-            handlers::sys_read(rid, buf).unwrap()
+
+            result_to_rax(handlers::sys_read(rid, buf))
         },
 
 
@@ -44,7 +45,7 @@ extern "C" fn syscall(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> u64 
             let len = arg3 as usize;
             let buf = unsafe { slice::from_raw_parts(ptr, len) };
             
-            handlers::sys_write(rid, buf).unwrap()
+            result_to_rax(handlers::sys_write(rid, buf))
         },
 
         Syscall::Seek => handlers::sys_seek(),

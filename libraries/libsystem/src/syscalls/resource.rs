@@ -1,4 +1,4 @@
-use libsci::resources::{parse_resource_result, Resource, ResourceID, ResourceResult};
+use libsci::resources::{rax_to_result, Resource, ResourceID, ResourceResult};
 
 use super::{sys_close, sys_read, sys_seek, sys_write};
 
@@ -15,27 +15,21 @@ impl From<ResourceID> for SystemResource {
 }
 
 impl Resource for SystemResource {
-    fn read(&mut self, buffer: &mut [u8]) -> ResourceResult<u64> {
-        let res = sys_read(self.rid, buffer);
-        parse_resource_result(res)
+    fn read(&mut self, buffer: &mut [u8]) -> ResourceResult {
+        sys_read(self.rid, buffer)
     }
 
-    fn write(&mut self, buffer: &[u8]) -> ResourceResult<u64> {
-        let res = sys_write(self.rid, buffer);
-        parse_resource_result(res)
+    fn write(&mut self, buffer: &[u8]) -> ResourceResult {
+        sys_write(self.rid, buffer)
     }
 
-    fn seek(&mut self, offset: usize) -> ResourceResult<()> {
-        let res = sys_seek(self.rid, offset);
-        match parse_resource_result::<u64>(res) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e),
-        }
+    fn seek(&mut self, offset: usize) -> ResourceResult {
+        sys_seek(self.rid, offset)
     }
 }
 
 impl Drop for SystemResource {
     fn drop(&mut self) {
-        sys_close(self.rid);
+        sys_close(self.rid).unwrap();
     }
 }

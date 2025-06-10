@@ -8,19 +8,19 @@ pub type ResourceID = u32;
 pub trait Resource {
     /// Reads up to `buffer.len()` bytes from the resource, into `buffer` and 
     /// advances the seek head by that amount. Returns the amount read.
-    fn read(&mut self, buffer: &mut [u8]) -> ResourceResult<u64>;
+    fn read(&mut self, buffer: &mut [u8]) -> ResourceResult;
 
     /// Writes the buffer into the resource, advancing the seek head to the end
     /// of the write. May not write the whole buffer. Returns the number of
     /// bytes written.
-    fn write(&mut self, buffer: &[u8]) -> ResourceResult<u64>;
+    fn write(&mut self, buffer: &[u8]) -> ResourceResult;
 
     /// Sets the seek head to the given offset from the beginning of the
     /// resource.
-    fn seek(&mut self, offset: usize) -> ResourceResult<()>;
+    fn seek(&mut self, offset: usize) -> ResourceResult;
 }
 
-pub type ResourceResult<T> = Result<T, ResourceError>;
+pub type ResourceResult = Result<i64, ResourceError>;
 
 #[derive(Debug)]
 /// The errors that can be returned by resource-related syscalls.
@@ -54,14 +54,13 @@ pub enum ResourceError {
     Misc(i64),
 }
 
-/// Converts a syscall return value into a `ResourceResult<T>`.
+/// Converts a syscall return value into a `ResourceResult`.
 ///
 /// Panics if the error code is reserved or invalid.
-pub fn parse_resource_result<T: From<u64>>(return_val: i64) -> ResourceResult<T> {
+pub fn rax_to_result(return_val: i64) -> ResourceResult {
     match return_val {
         0..=i64::MAX => {
-            let unsigned = return_val as u64;
-            Ok(unsigned.into())
+            Ok(return_val)
         },
 
         -1 => Err(ResourceError::ResourceNotFound),
@@ -71,5 +70,26 @@ pub fn parse_resource_result<T: From<u64>>(return_val: i64) -> ResourceResult<T>
         i64::MIN..-0xFFFF => Err(ResourceError::Misc(return_val)),
 
         _ => panic!("Invalid resource syscall return value encoutered"),
+    }
+}
+
+/// Converts a `ResourceResult<T>` into a syscall return value
+///
+/// `T` must be convertable into an `i64`. Panics if that value is less than 0.
+pub fn result_to_rax(result: ResourceResult) -> i64 {
+    match result {
+        Ok(val) => {
+            let val_int = val.into();
+            assert!(val_int >= 0);
+            val_int
+        }
+       
+        Err(ResourceError::ResourceNotFound) => -1,
+
+        Err(ResourceError::Unsupported) => -2,
+
+        Err(ResourceError::InvalidInput) => -3,
+
+        Err(ResourceError::Misc(c)) => c,
     }
 }
