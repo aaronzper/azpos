@@ -57,12 +57,12 @@ impl<T, const S: usize> Buffer<T, S> {
 
     /// Writes a value to the buffer, overwriting the oldest one if full
     pub fn push(&self, value: T) {
-        let len = self.len.load(Ordering::Acquire) + 1;
+        let len = self.len.load(Ordering::Acquire);
         let tail = self.tail.load(Ordering::Relaxed);
         let next = (tail + 1) % S;
 
         let head = self.head.load(Ordering::Acquire);
-        if tail == head { // Push the head if overflow
+        if tail == head && len != 0 { // Push the head if overflow
             self.head.store((head + 1) % S, Ordering::Release);
         }
 
@@ -71,8 +71,8 @@ impl<T, const S: usize> Buffer<T, S> {
 
         // Once len hits the size of the buffer, dont increase it further cause
         // at this poitn we're overwriting, not adding
-        if len <= S {
-            self.len.store(len, Ordering::Release);
+        if len < S {
+            self.len.store(len + 1, Ordering::Release);
         }
 
         if self.reader_waiting.swap(false, Ordering::Acquire) {
