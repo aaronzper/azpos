@@ -2,8 +2,8 @@
 #![no_main]
 
 pub use libsci;
+pub extern crate alloc;
 
-extern crate alloc;
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 

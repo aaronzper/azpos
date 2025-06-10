@@ -30,7 +30,15 @@ extern "C" fn syscall(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> u64 
 
         Syscall::GetLogger => handlers::sys_get_logger(),
 
-        Syscall::Read => todo!(),
+        Syscall::Read => {
+            let rid = arg1 as ResourceID;
+            let ptr = arg2 as *mut u8;
+            let len = arg3 as usize;
+            let buf = unsafe { slice::from_raw_parts_mut(ptr, len) };
+            
+            handlers::sys_read(rid, buf).unwrap()
+        },
+
 
         Syscall::Write => {
             let rid = arg1 as ResourceID;
@@ -41,7 +49,7 @@ extern "C" fn syscall(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> u64 
             handlers::sys_write(rid, buf).unwrap()
         },
 
-        Syscall::Seek => todo!(),
+        Syscall::Seek => handlers::sys_seek(),
 
         _ => panic!("Invalid syscall type"),
     }

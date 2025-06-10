@@ -29,8 +29,17 @@ pub fn sys_get_logger() -> u64 {
     rid as u64
 }
 
-pub fn sys_read() -> u64 {
-    todo!()
+pub fn sys_read(rid: ResourceID, buf: &mut [u8]) -> ResourceResult<u64> {
+    let pid = SCHEDULER.lock().current_proc().unwrap();
+    let mut procs = PROCESSES.lock();
+    let p = procs.get_proc_mut(pid).unwrap();
+
+    let resource = match p.resources.get_mut(&rid) {
+        Some(r) => r,
+        None => return Err(ResourceError::ResourceNotFound),
+    };
+
+    resource.read(buf)
 }
 
 pub fn sys_write(rid: ResourceID, buf: &[u8]) -> ResourceResult<u64> {
