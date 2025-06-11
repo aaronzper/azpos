@@ -39,6 +39,11 @@ impl ThreadTable {
         }
     }
 
+    /// Removes the given thread ID, if it exists, and returns that thread
+    pub fn remove_thread(&mut self, thread: ThreadID) -> Option<Thread> {
+        self.threads.remove(&thread)
+    }
+
     /// Returns a ref to a thread by ID, if it exists
     pub fn get_thread(&self, id: ThreadID) -> Option<&Thread> {
         self.threads.get(&id)

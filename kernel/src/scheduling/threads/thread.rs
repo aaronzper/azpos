@@ -1,8 +1,6 @@
 use alloc::boxed::Box;
 use x86_64::VirtAddr;
-
-use crate::{memory::stacks::{KThreadStack, KERNEL_STACK_ALLOCATOR}, processes::ProcessID};
-
+use crate::{memory::stacks::{KThreadStack, KERNEL_STACK_ALLOCATOR}, processes::ProcessID, scheduling::thread_exit};
 use super::state::CpuState;
 
 /// A thread identifier
@@ -82,5 +80,6 @@ extern "C" fn run_thread<F, T>(entrypoint: &mut F) -> !
 
     let boxed = unsafe { Box::from_raw(entrypoint) };
     boxed();
-    loop {} // TODO: Thread exit
+
+    thread_exit();
 }

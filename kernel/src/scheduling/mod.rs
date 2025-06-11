@@ -38,7 +38,12 @@ pub struct Scheduler {
     status: SchedulerState,
     /// A dummy wait thread that just idles. Used if there are no other threads
     /// to run
-    idle_thread: Thread
+    idle_thread: Thread,
+    /// The ~thread graveyard~ (spooky)
+    ///
+    /// Threads that are due to be killed (pushed to be `kill_thread`). Processed
+    /// on each schedule call.
+    graveyard: Vec<ThreadID>,
 }
 
 impl Scheduler {
@@ -49,6 +54,7 @@ impl Scheduler {
             runnable: Vec::new(),
             status: SchedulerState::NotStarted,
             idle_thread: Thread::new_thread(wait_loop, None),
+            graveyard: Vec::new(),
         }
     }
     
@@ -139,7 +145,7 @@ impl Scheduler {
         // Load in state of the new thread
         let new_t = match new_id {
             Some(id) => {
-                self.status = SchedulerState::Running(id);;
+                self.status = SchedulerState::Running(id);
                 let new_t = self.get_thread_mut(id).unwrap();
 
                 match new_t.proccess() {
@@ -170,6 +176,11 @@ impl Scheduler {
         if new_t.state.is_user() != was_user {
             unsafe { GS::swap() };
         }
+
+        // Kill threads in the ~graveyard~
+        for dead_tid in self.graveyard.drain(..) {
+            self.threads.remove_thread(dead_tid).unwrap();
+        }
     }
 
     /// Blocks the given thread and returns a `BlockedThread`.
@@ -185,9 +196,38 @@ impl Scheduler {
     }
 
     fn unblock_thread(&mut self, thread: ThreadID) {
-        self.runnable.push(thread);
+        // Make sure the thread still exists and isnt queued to die
+        // (a thread coulda been killed while also blocked)
+        if self.threads.get_thread(thread).is_some() && !self.graveyard.contains(&thread) {
+            self.runnable.push(thread);
+        }
     }
 
+    /// Terminates the given thread, removing it from the run queue and queuing
+    /// it to ~die~ on the next schedule run (not doing it immediately prevents
+    /// a currently-running thread to find itself on a freed stack, or other
+    /// funky stuff).
+    ///
+    /// Returns `None` if the given TID is invalid.
+    ///
+    /// This shouldn't be called on the currently running thread (the thread
+    /// will keep running after its killed, which could get funky) -- call 
+    /// `thread_exit` instead.
+    pub fn kill_thread(&mut self, thread: ThreadID) -> Option<()> {
+        // Check if the thread exists
+        self.threads.get_thread(thread)?;
+
+        // Queue it to ~die~
+        self.graveyard.push(thread);
+
+        // Remove it from run queue, if not blocked
+        match self.runnable.iter().position(|tid| *tid == thread) {
+            Some(i) => { self.runnable.remove(i); },
+            None => (),
+        };
+
+        Some(())
+    }
 
     /// Returns the currently running PID, if we're in a user thread. `None` otherwise.
     pub fn current_proc(&self) -> Option<ProcessID> {
@@ -210,13 +250,23 @@ impl Drop for BlockedThread {
 }
 
 /// Yields control back to the scheduler
-///
-/// (Right now this just raises a timer interrupt to run the scheduler but once
-/// i have a "yield" syscall I'll use that)
 pub fn thread_yield() {
     unsafe {
         // Kinda jank but raise a timer interrupt to "yield"
         x86_64::instructions::interrupts::
             software_interrupt::<{PICInterrupt::Timer as u8}>();
     }
+}
+
+/// Kills the current thread and yields back to the scheduler
+///
+/// Panics if we're not in a thread
+pub fn thread_exit() -> ! {
+    let mut sched = SCHEDULER.lock();
+    let tid = sched.currently_running().unwrap();
+    sched.kill_thread(tid);
+    drop(sched);
+
+    thread_yield();
+    panic!("Returned after exit");
 }
