@@ -3,7 +3,7 @@ use alloc::{boxed::Box, collections::btree_map::BTreeMap, slice, string::String}
 use elf::{abi::{ET_EXEC, ET_REL, PT_LOAD}, endian::NativeEndian, ElfBytes};
 use lazy_static::lazy_static;
 use x86_64::{registers::{rflags::RFlags, segmentation::GS}, structures::{idt::InterruptStackFrameValue, paging::Page}, VirtAddr};
-use crate::{interrupts::GDT, memory::{user::{alloc_user_pages, UserMemoryFlags, USER_END_ADDR}, SizedPage, PAGE_SIZE}, scheduling::threads::{sync::KIntMutex, Thread}, SCHEDULER};
+use crate::{interrupts::GDT, memory::{user::{alloc_user_pages, UserMemoryFlags, USER_END_ADDR}, SizedPage, PAGE_SIZE}, scheduling::threads::{sync::KIntMutex, Thread}, utils::id_table::IDTable, SCHEDULER};
 
 mod process;
 pub use process::{ProcessID, Process};
@@ -13,51 +13,8 @@ pub mod elfdefs;
 pub mod syscalls;
 
 lazy_static! {
-    pub static ref PROCESSES: KIntMutex<ProcessTable> =
-        KIntMutex::new(ProcessTable::new());
-}
-
-/// Contains all processes on the system, and some metadata
-pub struct ProcessTable {
-    processes: BTreeMap<ProcessID, Process>,
-    next_id: ProcessID,
-}
-
-impl ProcessTable {
-    pub fn new() -> ProcessTable {
-        ProcessTable {
-            processes: BTreeMap::new(),
-            next_id: 0,
-        }
-    }
-
-    /// Adds a new proc to the table and returns its given PID
-    pub fn add_proc(&mut self, thread: Process) -> ProcessID {
-        let first_id = self.next_id;
-        loop { // TODO: Optimize to not be O(n)
-            let id = self.next_id;
-            self.next_id += 1;
-            if !self.processes.contains_key(&id) {
-                self.processes.insert(id, thread);
-                return id;
-            }
-
-            // We've gone through every PID and gotten back to the start
-            if self.next_id == first_id {
-                panic!("Out of Process IDs!");
-            }
-        }
-    }
-
-    /// Returns a ref to a proc by PID, if it exists
-    pub fn get_proc(&self, id: ProcessID) -> Option<&Process> {
-        self.processes.get(&id)
-    }
-    ///
-    /// Returns a mutable refernce to a proc by PID, if it exists
-    pub fn get_proc_mut(&mut self, id: ProcessID) -> Option<&mut Process> {
-        self.processes.get_mut(&id)
-    }
+    pub static ref PROCESSES: KIntMutex<IDTable<ProcessID, Process>> =
+        KIntMutex::new(IDTable::new());
 }
 
 /// Spawns a process from the given ELF data, with the given name, creating a 
@@ -73,7 +30,7 @@ pub fn spawn_proc(name: String, elf_data: Box<[u8]>) -> Option<ProcessID> {
     if elf.ehdr.e_entry == 0 { return None; }
 
     let proc = Process::new(name);
-    let pid = PROCESSES.lock().add_proc(proc);
+    let pid = PROCESSES.lock().add_entry(proc);
 
     let t = Thread::new_thread(move || {
         let int_stack = {

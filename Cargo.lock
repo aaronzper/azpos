@@ -69,6 +69,7 @@ dependencies = [
  "lazy_static",
  "libsci",
  "modular-bitfield",
+ "num-traits",
  "pic8259",
  "simple-pcf",
  "spin 0.5.2",

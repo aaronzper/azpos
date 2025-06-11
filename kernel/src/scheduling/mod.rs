@@ -1,9 +1,9 @@
 use core::cmp::Ordering;
 use alloc::vec::Vec;
 use lazy_static::lazy_static;
-use threads::{state::CpuState, sync::KIntMutex, Thread, ThreadID, ThreadTable};
+use threads::{state::CpuState, sync::KIntMutex, Thread, ThreadID};
 use x86_64::registers::segmentation::GS;
-use crate::{devices::pic::PICInterrupt, interrupts::interrupts_enabled, processes::{syscalls::set_syscall_stack, ProcessID, PROCESSES}};
+use crate::{devices::pic::PICInterrupt, interrupts::interrupts_enabled, processes::{syscalls::set_syscall_stack, ProcessID, PROCESSES}, utils::id_table::IDTable};
 
 /// Threads
 pub mod threads;
@@ -30,7 +30,7 @@ enum SchedulerState {
 /// The main scheduler, in charge of scheduling kernel and user threads
 pub struct Scheduler {
     /// A map owning all threads and allocating their IDs
-    threads: ThreadTable,
+    threads: IDTable<ThreadID, Thread>,
     /// A list of all runable threads
     runnable: Vec<ThreadID>,
     /// What the scheduler is currently up to. See rustdoc on `SchedulerState`
@@ -50,7 +50,7 @@ impl Scheduler {
     /// Creates the `Scheduler` with no threads to run
     fn new() -> Scheduler {
         Scheduler {
-            threads: ThreadTable::new(),
+            threads: IDTable::new(),
             runnable: Vec::new(),
             status: SchedulerState::NotStarted,
             idle_thread: Thread::new_thread(wait_loop, None),
@@ -60,19 +60,19 @@ impl Scheduler {
     
     /// Add a thread to the runnable queue and returns its new ID
     pub fn add_thread(&mut self, thread: Thread) -> ThreadID {
-        let id = self.threads.add_thread(thread);
+        let id = self.threads.add_entry(thread);
         self.runnable.push(id);
         id
     }
 
     /// Get a thread by ID if it exists
     pub fn get_thread(&self, id: ThreadID) -> Option<&Thread> {
-        self.threads.get_thread(id)
+        self.threads.get_entry(id)
     }
 
     /// Get a mutable thread by ID if it exists
     pub fn get_thread_mut(&mut self, id: ThreadID) -> Option<&mut Thread> {
-        self.threads.get_thread_mut(id)
+        self.threads.get_entry_mut(id)
     }
 
     /// Returns the ID of the currently running thread, if the scheduler is
@@ -117,7 +117,7 @@ impl Scheduler {
                 match old_t.proccess() {
                     Some(old_pid) => {
                         let mut procs_lock = PROCESSES.lock();
-                        let old_p = procs_lock.get_proc_mut(old_pid).unwrap();
+                        let old_p = procs_lock.get_entry_mut(old_pid).unwrap();
                         old_p.save_page_tables();
 
                         // User process threads are usually in userland, but
@@ -151,7 +151,7 @@ impl Scheduler {
                 match new_t.proccess() {
                     Some(new_pid) => {
                         let mut procs_lock = PROCESSES.lock();
-                        let new_p = procs_lock.get_proc_mut(new_pid).unwrap();
+                        let new_p = procs_lock.get_entry_mut(new_pid).unwrap();
                         new_p.load_page_tables();
 
                         // Save to GS for syscalls
@@ -179,7 +179,7 @@ impl Scheduler {
 
         // Kill threads in the ~graveyard~
         for dead_tid in self.graveyard.drain(..) {
-            self.threads.remove_thread(dead_tid).unwrap();
+            self.threads.remove_entry(dead_tid).unwrap();
         }
     }
 
@@ -198,7 +198,7 @@ impl Scheduler {
     fn unblock_thread(&mut self, thread: ThreadID) {
         // Make sure the thread still exists and isnt queued to die
         // (a thread coulda been killed while also blocked)
-        if self.threads.get_thread(thread).is_some() && !self.graveyard.contains(&thread) {
+        if self.threads.get_entry(thread).is_some() && !self.graveyard.contains(&thread) {
             self.runnable.push(thread);
         }
     }
@@ -214,7 +214,7 @@ impl Scheduler {
     /// Returns `None` if the given TID is invalid.
     unsafe fn kill_thread(&mut self, thread: ThreadID) -> Option<()> {
         // Check if the thread exists
-        self.threads.get_thread(thread)?;
+        self.threads.get_entry(thread)?;
 
         // Queue it to ~die~
         self.graveyard.push(thread);

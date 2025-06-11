@@ -11,7 +11,7 @@ pub fn sys_yield() -> i64 {
 pub fn sys_close(rid: ResourceID) -> ResourceResult {
     let pid = SCHEDULER.lock().current_proc().unwrap();
     let mut procs = PROCESSES.lock();
-    let p = match procs.get_proc_mut(pid) {
+    let p = match procs.get_entry_mut(pid) {
         Some(p) => p,
         None => return Err(ResourceError::ResourceNotFound),
     };
@@ -25,7 +25,7 @@ pub fn sys_get_logger() -> ResourceID {
 
     let pid = SCHEDULER.lock().current_proc().unwrap();
     let mut procs = PROCESSES.lock();
-    let p = procs.get_proc_mut(pid).unwrap();
+    let p = procs.get_entry_mut(pid).unwrap();
 
     // TODO: Assign RID dynamically
     let rid = 123;
@@ -42,7 +42,7 @@ pub fn sys_get_logger() -> ResourceID {
 pub fn sys_read(rid: ResourceID, buf: &mut [u8]) -> ResourceResult {
     let pid = SCHEDULER.lock().current_proc().unwrap();
     let mut procs = PROCESSES.lock();
-    let p = procs.get_proc_mut(pid).unwrap();
+    let p = procs.get_entry_mut(pid).unwrap();
 
     let resource = match p.resources.get_mut(&rid) {
         Some(r) => r,
@@ -55,7 +55,7 @@ pub fn sys_read(rid: ResourceID, buf: &mut [u8]) -> ResourceResult {
 pub fn sys_write(rid: ResourceID, buf: &[u8]) -> ResourceResult {
     let pid = SCHEDULER.lock().current_proc().unwrap();
     let mut procs = PROCESSES.lock();
-    let p = procs.get_proc_mut(pid).unwrap();
+    let p = procs.get_entry_mut(pid).unwrap();
 
     let resource = match p.resources.get_mut(&rid) {
         Some(r) => r,

@@ -20,6 +20,8 @@ use scheduling::{thread_yield, threads::Thread, SCHEDULER};
 #[macro_use]
 /// Global kernel logger
 mod logger;
+/// General kernel utility types
+mod utils;
 /// Kernel panic functionality
 mod panic;
 /// Device drivers
