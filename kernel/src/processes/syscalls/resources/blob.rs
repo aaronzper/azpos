@@ -2,8 +2,7 @@ use core::cmp::min;
 use alloc::boxed::Box;
 use libsci::resources::Resource;
 
-/// A resource encapsulating a finite, inert blob of data that is only read once
-/// and then consumed.
+/// A resource encapsulating a finite, generic blob of data that can only be read
 ///
 /// Primarily used by the kernel to return variable-length data from a syscall
 /// request (e.g. listing devices or directory entries).
