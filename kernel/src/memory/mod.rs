@@ -1,14 +1,14 @@
 use core::{cmp::max, slice};
-
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use heap::HeapAllocator;
 use paging::{PageAllocator, PageRefCount};
-use spin::Mutex;
 use x86_64::{structures::paging::{PageTableFlags, Translate}, PhysAddr, VirtAddr};
+use crate::scheduling::threads::sync::KIntMutex;
 
 /// Physical page allocation and management
 mod paging;
 pub use paging::{dealloc_frame, current_pt, SizedPage};
+
 /// Dynamic memory allocation (the heap!)
 mod heap;
 /// Stack allocation for kernel and user threads
@@ -28,7 +28,7 @@ static mut PHYS_MAP_ADDR: VirtAddr = VirtAddr::new(0);
 static mut PHYS_SIZE: u64 = 0;
 static mut PHYS_MAP_SIZE: u64 = 0;
 
-static PAGE_ALLOCATOR: Mutex<Option<PageAllocator>> = Mutex::new(None);
+static PAGE_ALLOCATOR: KIntMutex<Option<PageAllocator>> = KIntMutex::new(None);
 #[global_allocator]
 static HEAP_ALLOCATOR: HeapAllocator = HeapAllocator::new();
 

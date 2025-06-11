@@ -1,9 +1,8 @@
 use core::sync::atomic::{AtomicU64, Ordering};
-
 use bitvec::vec::BitVec;
 use lazy_static::lazy_static;
 use x86_64::{structures::paging::{mapper::CleanUp, FrameDeallocator, Mapper, Page, PageTableFlags}, VirtAddr};
-use spin::Mutex;
+use crate::scheduling::threads::sync::KIntMutex;
 
 use super::{paging::{current_pt, SizedPage}, PAGE_ALLOCATOR, PAGE_SIZE};
 
@@ -18,8 +17,8 @@ pub static STACKS_BOTTOM: AtomicU64 =
     AtomicU64::new(KERNEL_STACK_ROOT.as_u64() - 1);
 
 lazy_static! {
-    pub static ref KERNEL_STACK_ALLOCATOR: Mutex<StackAllocator> =
-        Mutex::new(StackAllocator::new(KERNEL_STACK_ROOT, KERNEL_STACK_SIZE));
+    pub static ref KERNEL_STACK_ALLOCATOR: KIntMutex<StackAllocator> =
+        KIntMutex::new(StackAllocator::new(KERNEL_STACK_ROOT, KERNEL_STACK_SIZE));
 }
 
 /// Allocates kernel stacks.

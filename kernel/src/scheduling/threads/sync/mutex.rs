@@ -1,14 +1,13 @@
 use core::{cell::UnsafeCell, ops::{Deref, DerefMut}, sync::atomic::{AtomicBool, Ordering}};
 use alloc::vec::Vec;
-use spin::Mutex;
-
 use crate::scheduling::{thread_yield, BlockedThread, SCHEDULER};
+use super::KIntMutex;
 
 /// A kernel mutex that blocks until able to acquire the lock
 pub struct KMutex<T> {
     value: UnsafeCell<T>,
     locked: AtomicBool,
-    blocks: Mutex<Vec<BlockedThread>>,
+    blocks: KIntMutex<Vec<BlockedThread>>,
 }
     
 unsafe impl<T> Sync for KMutex<T> {}
@@ -19,7 +18,7 @@ impl<T> KMutex<T> {
         KMutex {
             value: UnsafeCell::new(value),
             locked: AtomicBool::new(false),
-            blocks: Mutex::new(Vec::new()),
+            blocks: KIntMutex::new(Vec::new()),
         }
     }
 

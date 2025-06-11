@@ -1,12 +1,12 @@
 use lazy_static::lazy_static;
-use spin::Mutex;
 use x86_64::{registers::segmentation::Segment, structures::{gdt::{Descriptor, GlobalDescriptorTable, SegmentSelector}, idt::InterruptDescriptorTable, tss::TaskStateSegment}, VirtAddr};
-
-use crate::{devices::pic::{self, PICInterrupt}, memory::PAGE_SIZE};
+use crate::{devices::pic::{self, PICInterrupt}, memory::PAGE_SIZE, scheduling::threads::sync::KIntMutex};
 
 mod handlers;
 
 const STACK_SIZE: usize = PAGE_SIZE as usize * 4;
+
+static PIC: KIntMutex<pic::PIC> = KIntMutex::new(pic::PIC::new());
 
 // Needs to be mut so that the stack isn't put into RODATA
 static mut DOUBLE_FAULT_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
@@ -28,8 +28,6 @@ pub struct GDTSegments {
     pub user_data: SegmentSelector,
     tss: SegmentSelector,
 }
-
-static PIC: Mutex<pic::PIC> = Mutex::new(pic::PIC::new());
 
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
