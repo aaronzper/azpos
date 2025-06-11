@@ -1,10 +1,6 @@
 use core::{alloc::{GlobalAlloc, Layout}, ptr::null_mut, sync::atomic::Ordering};
-
-use spin::Mutex;
 use x86_64::{structures::paging::{Page, PageTableFlags}, VirtAddr};
-
-use crate::memory::PAGE_ALLOCATOR;
-
+use crate::{memory::PAGE_ALLOCATOR, scheduling::threads::sync::KIntMutex};
 use super::stacks::STACKS_BOTTOM;
 
 struct AllocatorInner {
@@ -76,14 +72,14 @@ impl AllocatorInner {
 /// The global heap allocator, a bump allocator. Only actually frees memory if
 /// the entire heap is free, or if the most recent allocation is freed.
 pub struct HeapAllocator {
-    inner: Mutex<Option<AllocatorInner>>,
+    inner: KIntMutex<Option<AllocatorInner>>,
 }
 
 impl HeapAllocator {
     /// Creates an uninitialized heap allocator
     pub const fn new() -> HeapAllocator {
         HeapAllocator {
-            inner: Mutex::new(None),
+            inner: KIntMutex::new(None),
         }
     }
 
