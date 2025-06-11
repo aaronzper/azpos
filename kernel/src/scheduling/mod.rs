@@ -208,12 +208,11 @@ impl Scheduler {
     /// a currently-running thread to find itself on a freed stack, or other
     /// funky stuff).
     ///
-    /// Returns `None` if the given TID is invalid.
+    /// Unsafe cause if you call this on a thread in the middle of running, its
+    /// stack variables never get cleaned up.
     ///
-    /// This shouldn't be called on the currently running thread (the thread
-    /// will keep running after its killed, which could get funky) -- call 
-    /// `thread_exit` instead.
-    pub fn kill_thread(&mut self, thread: ThreadID) -> Option<()> {
+    /// Returns `None` if the given TID is invalid.
+    unsafe fn kill_thread(&mut self, thread: ThreadID) -> Option<()> {
         // Check if the thread exists
         self.threads.get_thread(thread)?;
 
@@ -260,11 +259,16 @@ pub fn thread_yield() {
 
 /// Kills the current thread and yields back to the scheduler
 ///
+/// Unsafe cause calling this without unwinding the stack can leak resources
+///
+/// For the time being, should only be called at the bottom of the thread stack,
+/// since I haven't implemented unwinding
+///
 /// Panics if we're not in a thread
-pub fn thread_exit() -> ! {
+pub unsafe fn thread_exit() -> ! {
     let mut sched = SCHEDULER.lock();
     let tid = sched.currently_running().unwrap();
-    sched.kill_thread(tid);
+    unsafe { sched.kill_thread(tid); }
     drop(sched);
 
     thread_yield();

@@ -81,5 +81,5 @@ extern "C" fn run_thread<F, T>(entrypoint: &mut F) -> !
     let boxed = unsafe { Box::from_raw(entrypoint) };
     boxed();
 
-    thread_exit();
+    unsafe { thread_exit(); }
 }
