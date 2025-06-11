@@ -61,25 +61,27 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     let mut sched_lock = SCHEDULER.lock();
     sched_lock.add_thread(Thread::new_thread(keyboard_listener, None));
-    drop(sched_lock); // Drop so not locked forever
-
-    let pci = PCIController::new();
-    let ahci_pci = pci.devices().iter()
-        .find(|x| {
-            let (c, sc) = x.class();
-            c == PCIDeviceClass::MassStorageCtrl && sc == SATA_PCI_SUBCLASS
-        })
+    sched_lock.add_thread(Thread::new_thread(|| {
+        let pci = PCIController::new();
+        let ahci_pci = pci.devices().iter()
+            .find(|x| {
+                let (c, sc) = x.class();
+                c == PCIDeviceClass::MassStorageCtrl && sc == SATA_PCI_SUBCLASS
+            })
         .expect("No PCI storage device");
-    let mut ahci = AHCIController::new(ahci_pci).unwrap();
+        let mut ahci = AHCIController::new(ahci_pci).unwrap();
 
-    let device = ahci.devices()[0].take_device().unwrap();
-    let part = &mut device.partition().unwrap()[2];
+        let device = ahci.devices()[0].take_device().unwrap();
+        let part = &mut device.partition().unwrap()[2];
 
-    let fs = FATFilesystem::mount(part.as_mut()).unwrap();
-    let exe = FilePath::new("/programs/adam.exe".to_string()).unwrap();
-    let elf_data = fs.read_all(&exe).unwrap();
+        let fs = FATFilesystem::mount(part.as_mut()).unwrap();
+        let exe = FilePath::new("/programs/adam.exe".to_string()).unwrap();
+        let elf_data = fs.read_all(&exe).unwrap();
 
-    let adam = spawn_proc("adam".to_string(), elf_data.clone()).unwrap();
+        let adam = spawn_proc("adam".to_string(), elf_data.clone()).unwrap();
+    }, None));
+
+    drop(sched_lock); // Drop so not locked forever
 
     init_syscalls();
     init_interrupts();
