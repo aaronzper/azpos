@@ -1,6 +1,6 @@
-use alloc::{borrow::ToOwned, boxed::Box, vec};
-use libsci::resources::{ResourceError, ResourceID, ResourceResult};
-use crate::{processes::PROCESSES, scheduling::{thread_yield, SCHEDULER}};
+use alloc::boxed::Box;
+use libsci::{postcard::to_allocvec, resources::{ResourceError, ResourceID, ResourceResult}};
+use crate::{devices::DEVICE_MANAGER, processes::PROCESSES, scheduling::{thread_yield, SCHEDULER}};
 use super::resources::{BlobResource, LoggerResource};
 
 pub fn sys_yield() -> i64 {
@@ -58,4 +58,16 @@ pub fn sys_write(rid: ResourceID, buf: &[u8]) -> ResourceResult {
 
 pub fn sys_seek() -> i64 {
     todo!()
+}
+
+pub fn sys_list_devices() -> ResourceID {
+    let drivers = DEVICE_MANAGER.lock().get_drivers();
+    let drivers_ser = to_allocvec(&drivers).unwrap();
+    let blob = BlobResource::new(drivers_ser.into());
+    
+    let pid = SCHEDULER.lock().current_proc().unwrap();
+    let mut procs = PROCESSES.lock();
+    let p = procs.get_entry_mut(pid).unwrap();
+
+    p.resources.add_entry(Box::new(blob))
 }

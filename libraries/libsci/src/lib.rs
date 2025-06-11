@@ -1,4 +1,5 @@
 #![no_std]
+
 pub use postcard;
 
 extern crate alloc;
@@ -87,4 +88,12 @@ pub enum Syscall {
     /// - 0 on success
     /// - OR a negative error code
     Seek,
+
+    /// Returns a Resource that, when read, provides a serialized list of the
+    /// devices on the system. TODO: Document further
+    ///
+    /// No arguments
+    ///
+    /// Returns the RID of that resource
+    ListDevices
 }
