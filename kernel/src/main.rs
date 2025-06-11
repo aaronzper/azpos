@@ -9,7 +9,7 @@ extern crate alloc;
 
 use alloc::string::ToString;
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
-use devices::{fb::{FbTerminal, Framebuffer}, keyboard::keyboard_listener, pci::{PCIController, PCIDeviceClass}, storage::{ahci::{AHCIController, SATA_PCI_SUBCLASS}, BlockDevice}};
+use devices::{fb::{FbTerminal, Framebuffer}, init_devices, keyboard::keyboard_listener, pci::{PCIController, PCIDeviceClass}, storage::{ahci::{AHCIController, SATA_PCI_SUBCLASS}, BlockDevice}, DEVICE_MANAGER};
 use filesystem::{fat::FATFilesystem, FilePath, FileSystem};
 use interrupts::init_interrupts;
 use logger::set_logger;
@@ -83,8 +83,11 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     drop(sched_lock); // Drop so not locked forever
 
+    init_devices();
     init_syscalls();
     init_interrupts();
+
+    println!("{:#?}", DEVICE_MANAGER.lock().get_drivers());
 
     thread_yield();
 

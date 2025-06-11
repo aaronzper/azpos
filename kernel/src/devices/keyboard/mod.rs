@@ -1,7 +1,9 @@
+use alloc::{boxed::Box, string::String};
+use libsci::{devices::{DeviceInfo, DriverInfo}, resources::Resource};
 use scancode::Scancode;
 use crate::scheduling::threads::sync::{Buffer, KIntMutex};
 use x86_64::instructions::port::Port;
-
+use super::DeviceDriver;
 mod scancode;
 
 const KEYBOARD_PORT: u16 = 0x60;
@@ -37,5 +39,27 @@ pub fn keyboard_listener() {
     loop {
         let scode = SCANCODES.pop();
         println!("{:?}", scode);
+    }
+}
+
+
+/// The `DeviceDriver` for PS/2 exposed to processes
+pub struct KeyboardDriver;
+
+impl DeviceDriver for KeyboardDriver {
+    fn driver_info(&self) -> DriverInfo {
+        let kb = DeviceInfo {
+            device_name: String::from("keyboard"),
+            device_type: libsci::devices::DeviceType::Keyboard,
+        };
+
+        DriverInfo { 
+            driver_name: String::from("ps2_keyboard"),
+            devices: Box::from([kb]),
+        }
+    }
+
+    fn open_device(&mut self, device_name: &str) -> Option<Box<dyn Resource>> {
+        todo!()
     }
 }

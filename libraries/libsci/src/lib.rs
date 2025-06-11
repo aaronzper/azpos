@@ -5,6 +5,8 @@ extern crate alloc;
 
 /// Definitions for a `Resource`
 pub mod resources;
+/// Device-related structs and definitions
+pub mod devices;
 
 #[non_exhaustive]
 #[repr(u64)]
