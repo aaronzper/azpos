@@ -1,7 +1,7 @@
-use alloc::boxed::Box;
+use alloc::{borrow::ToOwned, boxed::Box, vec};
 use libsci::resources::{ResourceError, ResourceID, ResourceResult};
 use crate::{processes::PROCESSES, scheduling::{thread_yield, SCHEDULER}};
-use super::resources::LoggerResource;
+use super::resources::{BlobResource, LoggerResource};
 
 pub fn sys_yield() -> i64 {
     thread_yield();
@@ -28,6 +28,11 @@ pub fn sys_get_logger() -> ResourceID {
     // TODO: Assign RID dynamically
     let rid = 123;
     p.resources.insert(rid, Box::new(LoggerResource::new()));
+
+    // Quick test from here, we'll use this in real syscalls later
+    let buf = "test".as_bytes().to_owned();
+    let blob = BlobResource::new(buf.into());
+    p.resources.insert(456, Box::new(blob));
 
     rid
 }
