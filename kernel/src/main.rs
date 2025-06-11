@@ -85,10 +85,13 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     init_devices();
     init_syscalls();
-    init_interrupts();
 
     println!("{:#?}", DEVICE_MANAGER.lock().get_drivers());
 
+    // Thread yield should happen right after ints are enabled, so that we
+    // dont get pre-empted before the scheduler is running (or in the middle of
+    // doing something)
+    init_interrupts();
     thread_yield();
 
     panic!("Scheduler yield returned -- this shouldn't happen!");
