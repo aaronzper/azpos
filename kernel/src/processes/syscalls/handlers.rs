@@ -16,7 +16,7 @@ pub fn sys_close(rid: ResourceID) -> ResourceResult {
         None => return Err(ResourceError::ResourceNotFound),
     };
 
-    p.resources.remove(&rid);
+    p.resources.remove_entry(rid);
     Ok(0)
 }
 
@@ -27,16 +27,7 @@ pub fn sys_get_logger() -> ResourceID {
     let mut procs = PROCESSES.lock();
     let p = procs.get_entry_mut(pid).unwrap();
 
-    // TODO: Assign RID dynamically
-    let rid = 123;
-    p.resources.insert(rid, logger);
-
-    // Quick test from here, we'll use this in real syscalls later
-    let buf = "test".as_bytes().to_owned();
-    let blob = BlobResource::new(buf.into());
-    p.resources.insert(456, Box::new(blob));
-
-    rid
+    p.resources.add_entry(logger)
 }
 
 pub fn sys_read(rid: ResourceID, buf: &mut [u8]) -> ResourceResult {
@@ -44,7 +35,7 @@ pub fn sys_read(rid: ResourceID, buf: &mut [u8]) -> ResourceResult {
     let mut procs = PROCESSES.lock();
     let p = procs.get_entry_mut(pid).unwrap();
 
-    let resource = match p.resources.get_mut(&rid) {
+    let resource = match p.resources.get_entry_mut(rid) {
         Some(r) => r,
         None => return Err(ResourceError::ResourceNotFound),
     };
@@ -57,7 +48,7 @@ pub fn sys_write(rid: ResourceID, buf: &[u8]) -> ResourceResult {
     let mut procs = PROCESSES.lock();
     let p = procs.get_entry_mut(pid).unwrap();
 
-    let resource = match p.resources.get_mut(&rid) {
+    let resource = match p.resources.get_entry_mut(rid) {
         Some(r) => r,
         None => return Err(ResourceError::ResourceNotFound),
     };

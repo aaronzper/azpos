@@ -2,7 +2,7 @@ use alloc::{boxed::Box, collections::btree_map::BTreeMap, string::String};
 use libsci::resources::{Resource, ResourceID};
 use x86_64::structures::paging::page_table::PageTableEntry;
 
-use crate::memory::current_pt;
+use crate::{memory::current_pt, utils::id_table::IDTable};
 
 const USER_PT_LEN: usize = 256;
 
@@ -19,7 +19,7 @@ pub struct Process {
     user_page_table: [PageTableEntry; USER_PT_LEN],
     
     /// The Resources owned by the process
-    pub resources: BTreeMap<ResourceID, Box<dyn Resource + Send>>,
+    pub resources: IDTable<ProcessID, Box<dyn Resource + Send>>,
 }
 
 impl Process {
@@ -31,7 +31,7 @@ impl Process {
         Self {
             name,
             user_page_table: [const { PageTableEntry::new() }; USER_PT_LEN],
-            resources: BTreeMap::new(),
+            resources: IDTable::new(),
         }
     }
 

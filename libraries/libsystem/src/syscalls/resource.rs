@@ -2,6 +2,7 @@ use libsci::resources::{rax_to_result, Resource, ResourceID, ResourceResult};
 
 use super::{sys_close, sys_read, sys_seek, sys_write};
 
+#[derive(Debug)]
 /// An azpOS resource. This struct is a wrapper around a resource ID and provides
 /// the resource-related syscalls, calling them with it.
 pub struct SystemResource {
