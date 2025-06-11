@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use lazy_static::lazy_static;
 use threads::{state::CpuState, sync::KIntMutex, Thread, ThreadID, ThreadTable};
 use x86_64::registers::segmentation::GS;
-use crate::{devices::pic::PICInterrupt, processes::{syscalls::set_syscall_stack, ProcessID, PROCESSES}};
+use crate::{devices::pic::PICInterrupt, interrupts::interrupts_enabled, processes::{syscalls::set_syscall_stack, ProcessID, PROCESSES}};
 
 /// Threads
 pub mod threads;
@@ -249,7 +249,14 @@ impl Drop for BlockedThread {
 }
 
 /// Yields control back to the scheduler
+///
+/// Panics if interrupts are disabled, cause that means we shouldnt be
+/// pre-empting (and this pre-empts!)
 pub fn thread_yield() {
+    if !interrupts_enabled() {
+        panic!("Tried to yield with interrupts disabled");
+    }
+
     unsafe {
         // Kinda jank but raise a timer interrupt to "yield"
         x86_64::instructions::interrupts::
