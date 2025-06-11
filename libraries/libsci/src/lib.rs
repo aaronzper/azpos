@@ -1,4 +1,7 @@
 #![no_std]
+pub use postcard;
+
+extern crate alloc;
 
 /// Definitions for a `Resource`
 pub mod resources;
