@@ -46,14 +46,20 @@ impl<T> KMutex<T> {
         }
     }
 
-    /// Aqcuires the lock, blocking and yielding to the scheduler until
-    /// its available
+    /// Acquires the lock, blocking and yielding to the scheduler until
+    /// it is available.
     pub fn lock<'a>(&'a self) -> KMutexGuard<'a, T> {
         loop {
             match self.try_lock() {
                 Some(g) => break g,
                 None => {
                     let mut blocks = self.blocks.lock();
+                    // Re-check under the blocks lock: the holder may have
+                    // called unlock() (which clears blocks) between our failed
+                    // try_lock and here.  If it did, the mutex is now free.
+                    if let Some(g) = self.try_lock() {
+                        break g;
+                    }
                     let mut sched = SCHEDULER.lock();
                     let tid = sched.currently_running().expect("No scheduler");
                     let block = sched.block_thread(tid);

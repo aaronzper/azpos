@@ -4,10 +4,23 @@ use crate::scheduling::{thread_yield, BlockedThread, SCHEDULER};
 
 use super::{KMutex, KMutexGuard};
 
-/// A kernel condition variable that can be used to block a kthread waiting for
-/// some event to occur
+/// A kernel condition variable that blocks threads until an event occurs.
+///
+/// # Locking convention
+/// The caller of [`notify_all`](KCondvar::notify_all) **must** hold the
+/// `KMutex` that protects the associated condition when it calls
+/// `notify_all`.  Failing to do so opens a lost-wakeup window: the waiter
+/// can observe the condition, release the mutex, and be scheduled out before
+/// it adds itself to `blocked_threads`; a notify in that gap would clear an
+/// empty list and the waiter would sleep forever.
+///
+/// # IRQ safety
+/// `KCondvar` is **not** IRQ-safe: `notify_all` and `wait` both take a
+/// `KMutex` internally, which can block.  Use [`KIntMutex`](super::KIntMutex)
+/// + [`Buffer`](super::Buffer) for producer/consumer patterns that involve
+/// interrupt handlers.
 pub struct KCondvar {
-    blocked_threads: KMutex<Vec<BlockedThread>>
+    blocked_threads: KMutex<Vec<BlockedThread>>,
 }
 
 impl KCondvar {

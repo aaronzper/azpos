@@ -1,118 +1,102 @@
-use core::{cell::UnsafeCell, mem::MaybeUninit, sync::atomic::{AtomicBool, AtomicUsize, Ordering}};
-use super::{KCondvar, KMutex};
+use core::mem::MaybeUninit;
+use crate::scheduling::{thread_yield, BlockedThread, SCHEDULER};
+use super::KIntMutex;
 
-/// A lockless single-consumer/single-producer FIFO ring buffer.
+struct Inner<T, const S: usize> {
+    ring: [MaybeUninit<T>; S],
+    head: usize,
+    len: usize,
+    /// Blocked thread waiting for data.  At most one at a time — SPSC contract.
+    waiting_reader: Option<BlockedThread>,
+}
+
+/// A bounded FIFO buffer safe for use between a single IRQ producer and a
+/// single blocking consumer.
+///
+/// # SPSC contract
+/// At most one thread may call [`pop`](Buffer::pop) at a time.
+///
+/// # IRQ safety
+/// [`push`](Buffer::push) holds only a [`KIntMutex`] (no blocking, no
+/// [`KMutex`](super::KMutex), no yield) and drops the unblocked
+/// [`BlockedThread`] *after* releasing the lock, so `push` is safe from
+/// interrupt handlers.  The lock order for both paths is:
+/// `inner` (KIntMutex) → `SCHEDULER` (KIntMutex via BlockedThread::drop).
 pub struct Buffer<T, const S: usize> {
-    data: UnsafeCell<[MaybeUninit<T>; S]>,
-    head: AtomicUsize,
-    tail: AtomicUsize,
-    len: AtomicUsize,
-
-    reader_waiting: AtomicBool,
-    readable_mtx: KMutex<()>,
-    readable: KCondvar,
+    inner: KIntMutex<Inner<T, S>>,
 }
 
 unsafe impl<T: Send, const S: usize> Sync for Buffer<T, S> {}
 unsafe impl<T: Send, const S: usize> Send for Buffer<T, S> {}
 
-
 impl<T, const S: usize> Buffer<T, S> {
     pub const fn new() -> Self {
-        let buffer = [ const { MaybeUninit::<T>::uninit() }; S];
-        
-        Self {
-            data: UnsafeCell::new(buffer),
-            head: AtomicUsize::new(0),
-            tail: AtomicUsize::new(0),
-            len: AtomicUsize::new(0),
-
-            reader_waiting: AtomicBool::new(false),
-            readable_mtx: KMutex::new(()),
-            readable: KCondvar::new(),
+        Buffer {
+            inner: KIntMutex::new(Inner {
+                ring: [const { MaybeUninit::uninit() }; S],
+                head: 0,
+                len: 0,
+                waiting_reader: None,
+            }),
         }
     }
 
-    unsafe fn get_index(&self, idx: usize) -> T {
-        assert!(idx < S);
-
-        let ptr = self.data.get() as *mut MaybeUninit<T>;
-
-        unsafe { 
-            ptr.add(idx).as_ref().unwrap().assume_init_read()
-        }
-    }
-
-    fn set_index(&self, idx: usize, val: T) {
-        assert!(idx < S);
-
-        let ptr = self.data.get() as *mut MaybeUninit<T>;
-
-        let val_mut = unsafe { 
-            ptr.add(idx).as_mut().unwrap()
-        };
-
-        *val_mut = MaybeUninit::new(val);
-    }
-
-    /// Writes a value to the buffer, overwriting the oldest one if full
+    /// Writes a value into the buffer, overwriting the oldest item when full.
+    ///
+    /// IRQ-safe: the unblocked waiter is dropped *after* the inner lock is
+    /// released so `BlockedThread::drop` never nests inside `inner`.
     pub fn push(&self, value: T) {
-        let len = self.len.load(Ordering::Acquire);
-        let tail = self.tail.load(Ordering::Relaxed);
-        let next = (tail + 1) % S;
-
-        let head = self.head.load(Ordering::Acquire);
-        if tail == head && len != 0 { // Push the head if overflow
-            self.head.store((head + 1) % S, Ordering::Release);
-        }
-
-        self.set_index(tail, value);
-        self.tail.store(next, Ordering::Release);
-
-        // Once len hits the size of the buffer, dont increase it further cause
-        // at this poitn we're overwriting, not adding
-        if len < S {
-            self.len.store(len + 1, Ordering::Release);
-        }
-
-        if self.reader_waiting.swap(false, Ordering::Acquire) {
-            self.readable.notify_all();
-        }
+        let waiter = {
+            let mut inner = self.inner.lock();
+            let tail = (inner.head + inner.len) % S;
+            inner.ring[tail].write(value);
+            if inner.len == S {
+                // Full — overwrite oldest, advance head
+                inner.head = (inner.head + 1) % S;
+            } else {
+                inner.len += 1;
+            }
+            inner.waiting_reader.take()
+            // inner guard drops here, re-enabling interrupts
+        };
+        // BlockedThread::drop → SCHEDULER.lock(); safe because inner is released above
+        drop(waiter);
     }
 
-    /// Pops off the value from the start of the buffer. Returns `None` if
-    /// there's nothing to be read
+    /// Pops the oldest value without blocking. Returns `None` if empty.
     pub fn try_pop(&self) -> Option<T> {
-        let len = self.len.load(Ordering::Acquire);
-        if len == 0 {
+        let mut inner = self.inner.lock();
+        if inner.len == 0 {
             return None;
         }
-
-        let head = self.head.load(Ordering::Relaxed);
-
-        let val = unsafe { self.get_index(head) };
-        let next = (head + 1) % S;
-        self.head.store(next, Ordering::Release);
-        self.len.store(len - 1, Ordering::Release);
-
+        let val = unsafe { inner.ring[inner.head].assume_init_read() };
+        inner.head = (inner.head + 1) % S;
+        inner.len -= 1;
         Some(val)
     }
 
-    /// Pops off the value from the start of the buffer. Blocks until there's
-    /// something to be read
+    /// Pops the oldest value, blocking until one is available.
     pub fn pop(&self) -> T {
         loop {
-            match self.try_pop() {
-                Some(v) => break v,
-                None => {
-                    self.reader_waiting.store(true, Ordering::Release);
-                    let lock = self.readable_mtx.lock();
-                    match self.try_pop() {
-                        Some(v) => break v,
-                        None => self.readable.wait(lock),
-                    };
-                },
+            {
+                let mut inner = self.inner.lock();
+                if inner.len > 0 {
+                    let val = unsafe { inner.ring[inner.head].assume_init_read() };
+                    inner.head = (inner.head + 1) % S;
+                    inner.len -= 1;
+                    return val;
+                }
+                // Queue is empty.  Register as waiting reader before releasing
+                // inner so push() cannot miss the wakeup.
+                // Lock order: inner (KIntMutex) → SCHEDULER (KIntMutex).
+                let mut sched = SCHEDULER.lock();
+                let tid = sched.currently_running().expect("No scheduler");
+                let block = sched.block_thread(tid);
+                inner.waiting_reader = Some(block);
+                drop(sched);
+                // inner guard drops here, re-enabling interrupts
             }
+            thread_yield();
         }
     }
 }
