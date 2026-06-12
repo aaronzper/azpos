@@ -1,4 +1,4 @@
-use core::cmp::min;
+use core::{cmp::min, ptr};
 use alloc::{boxed::Box, vec::Vec};
 use device::AHCIDevice;
 use error::AHCIError;
@@ -74,7 +74,8 @@ impl AHCIController {
 
         bmr.set_interrupts(false);
 
-        let good_ports: Box<[usize]> = bmr.port_implemented.view_bits::<Lsb0>()
+        let port_impl = unsafe { ptr::read_volatile(&bmr.port_implemented) };
+        let good_ports: Box<[usize]> = port_impl.view_bits::<Lsb0>()
             .iter_ones()
             .filter(|i| bmr.ports[*i].device_detected())
             .collect();
@@ -107,18 +108,25 @@ impl AHCIController {
             port.stop();
 
             // We only support SATA for now (who's using CD-ROMs in 2025 amirite)
-            if port.signature == AHCIDeviceType::SATAPI { continue; }
+            if unsafe { ptr::read_volatile(&port.signature) } == AHCIDeviceType::SATAPI {
+                continue;
+            }
 
             let commands = port.command_list(commands_per_port as usize);
             let port_cts_index = commands_per_port as usize * good_ports_index;
             let port_cts_addr = tables_pa + (port_cts_index as u64 * CT_SIZE);
             for ct_i in 0..commands_per_port {
                 let ct_addr = port_cts_addr + (ct_i as u64 * CT_SIZE);
-                commands[ct_i as usize].command_table_addr = ct_addr;
-                commands[ct_i as usize].prdt_entries = PRDT_ENTRIES_PER_COMMAND;
-                commands[ct_i as usize].flags.set_command_fis_len(
-                    (size_of::<FISRegisterH2D>() / size_of::<u32>()) as u8
-                );
+                unsafe {
+                    ptr::write_volatile(
+                        &mut commands[ct_i as usize].command_table_addr, ct_addr);
+                    ptr::write_volatile(
+                        &mut commands[ct_i as usize].prdt_entries, PRDT_ENTRIES_PER_COMMAND);
+                    let fis_len = (size_of::<FISRegisterH2D>() / size_of::<u32>()) as u8;
+                    let mut flags = ptr::read_volatile(&commands[ct_i as usize].flags);
+                    flags.set_command_fis_len(fis_len);
+                    ptr::write_volatile(&mut commands[ct_i as usize].flags, flags);
+                }
             }
             
             let device = AHCIDevice::new(port, commands_per_port as usize);

@@ -3,7 +3,7 @@ use bitvec::{order::Lsb0, view::BitView};
 use x86_64::PhysAddr;
 use crate::memory::{resolve_phys_addr, mmio::{read_bitfield, write_bitfield}};
 use super::{fis::FISRegisterH2D, types::AHCIDeviceType, PRDT_ENTRIES_PER_COMMAND};
-use core::slice;
+use core::{ptr, slice};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -30,18 +30,22 @@ pub struct AHCIBaseMemoryReg {
 impl AHCIBaseMemoryReg {
     /// Does the HBA support 64-bit addressing?
     pub fn supports_64bit_addr(&self) -> bool {
-        read_bitfield::<u32, u8>(self.host_capabilities, 31, 32) != 0
+        let hc = unsafe { ptr::read_volatile(&self.host_capabilities) };
+        read_bitfield::<u32, u8>(hc, 31, 32) != 0
     }
 
     /// Enable or disable interrupts, HBA-wide
     pub fn set_interrupts(&mut self, ints: bool) {
-        self.global_host_control.view_bits_mut::<Lsb0>().set(1, ints);
+        let mut ghc = unsafe { ptr::read_volatile(&self.global_host_control) };
+        ghc.view_bits_mut::<Lsb0>().set(1, ints);
+        unsafe { ptr::write_volatile(&mut self.global_host_control, ghc) };
     }
 
     /// Returns the number of commands supported by the HBA
     pub fn num_supported_commands(&self) -> u8 {
         // Raw value "0" really means 1
-        read_bitfield::<u32, u8>(self.host_capabilities, 8, 13) + 1
+        let hc = unsafe { ptr::read_volatile(&self.host_capabilities) };
+        read_bitfield::<u32, u8>(hc, 8, 13) + 1
     }
 }
 
@@ -72,17 +76,17 @@ impl AHCIPort {
     /// Returns a slice to the port's command list, given a reference to the HBA
     /// base memory register (needed to determine the size of the list)
     pub fn command_list(&self, n_commands: usize) -> &mut [AHCICommandHeader] {
-        let va = resolve_phys_addr(self.cmd_list_base_addr)
-            .expect("Command List unmapped!");
-        let ptr = va.as_mut_ptr() as *mut AHCICommandHeader;
-        unsafe { slice::from_raw_parts_mut(ptr, n_commands) }
+        let addr = unsafe { ptr::read_volatile(&self.cmd_list_base_addr) };
+        let va = resolve_phys_addr(addr).expect("Command List unmapped!");
+        let raw = va.as_mut_ptr() as *mut AHCICommandHeader;
+        unsafe { slice::from_raw_parts_mut(raw, n_commands) }
     }
 
     pub fn fis(&self) -> &ReceivedFIS {
-        let va = resolve_phys_addr(self.fis_base_addr)
-            .expect("Received FIS unmapped!");
-        let ptr = va.as_mut_ptr() as *const ReceivedFIS;
-        unsafe { ptr.as_ref().unwrap() }
+        let addr = unsafe { ptr::read_volatile(&self.fis_base_addr) };
+        let va = resolve_phys_addr(addr).expect("Received FIS unmapped!");
+        let raw = va.as_mut_ptr() as *const ReceivedFIS;
+        unsafe { raw.as_ref().unwrap() }
     }
 
     /// Returns true if sata_status.IPM is active and sata_status.DET is
@@ -90,53 +94,66 @@ impl AHCIPort {
     pub fn device_detected(&self) -> bool {
         const IPM_ACTIVE: u8 = 0x1;
         const DET_ACTIVE: u8 = 0x3;
-    
-        let ipm: u8 = read_bitfield(self.sata_status, 8, 12);
-        let det: u8 = read_bitfield(self.sata_status, 0, 4);
+
+        let ss = unsafe { ptr::read_volatile(&self.sata_status) };
+        let ipm: u8 = read_bitfield(ss, 8, 12);
+        let det: u8 = read_bitfield(ss, 0, 4);
 
         ipm == IPM_ACTIVE && det == DET_ACTIVE
     }
 
-    /// Sets the port to start receiving commands!
+    /// Sets the port to start receiving commands
     pub fn start(&mut self) {
-        // Make sure Px.CMD_CR is clear (not currently processing a command)
-        while read_bitfield::<u32, u8>(self.command_status, 15, 16) != 0 {}
+        // Wait for PxCMD.CR to clear (not currently processing a command)
+        loop {
+            let cmd = unsafe { ptr::read_volatile(&self.command_status) };
+            if read_bitfield::<u32, u8>(cmd, 15, 16) == 0 { break; }
+        }
 
-        // PxCMD_ST
-        write_bitfield(&mut self.command_status, 0, 1, 1u64);
-        // PxCMD_FRE
-        write_bitfield(&mut self.command_status, 4, 5, 1u64);
+        // PxCMD.ST = 1
+        let mut cmd = unsafe { ptr::read_volatile(&self.command_status) };
+        write_bitfield(&mut cmd, 0, 1, 1u64);
+        unsafe { ptr::write_volatile(&mut self.command_status, cmd) };
+
+        // PxCMD.FRE = 1
+        let mut cmd = unsafe { ptr::read_volatile(&self.command_status) };
+        write_bitfield(&mut cmd, 4, 5, 1u64);
+        unsafe { ptr::write_volatile(&mut self.command_status, cmd) };
     }
 
-    /// Sets the port to stop receiving commands!
+    /// Sets the port to stop receiving commands
     pub fn stop(&mut self) {
-        // PxCMD_ST
-        write_bitfield(&mut self.command_status, 0, 1, 0u64);
-        // PxCMD_FRE
-        write_bitfield(&mut self.command_status, 4, 5, 0u64);
+        // PxCMD.ST = 0
+        let mut cmd = unsafe { ptr::read_volatile(&self.command_status) };
+        write_bitfield(&mut cmd, 0, 1, 0u64);
+        unsafe { ptr::write_volatile(&mut self.command_status, cmd) };
+
+        // PxCMD.FRE = 0
+        let mut cmd = unsafe { ptr::read_volatile(&self.command_status) };
+        write_bitfield(&mut cmd, 4, 5, 0u64);
+        unsafe { ptr::write_volatile(&mut self.command_status, cmd) };
 
         loop {
-            let st: u8 = read_bitfield(self.command_status, 0, 1);
+            let cmd = unsafe { ptr::read_volatile(&self.command_status) };
+            let st: u8 = read_bitfield(cmd, 0, 1);
             if st != 0 { continue; }
-
-            let fre: u8 = read_bitfield(self.command_status, 4, 5);
+            let fre: u8 = read_bitfield(cmd, 4, 5);
             if fre != 0 { continue; }
-
             break;
         }
     }
 
-    /// Modifies the port's command issue field to start the command at the
-    /// specified index
+    /// Issues the command at the specified slot index
     pub fn issue_command(&mut self, command_index: usize) {
-        write_bitfield(&mut self.command_issue, command_index, command_index + 1, 1u64);
+        let mut ci = unsafe { ptr::read_volatile(&self.command_issue) };
+        write_bitfield(&mut ci, command_index, command_index + 1, 1u64);
+        unsafe { ptr::write_volatile(&mut self.command_issue, ci) };
     }
 
-    /// Returns whether the command at the given index is currently being
-    /// handled by the device
+    /// Returns whether the command at the given index is still being processed
     pub fn command_busy(&self, command_index: usize) -> bool {
-        read_bitfield::<u32, u8>(self.command_issue, command_index, command_index + 1)
-            == 1
+        let ci = unsafe { ptr::read_volatile(&self.command_issue) };
+        read_bitfield::<u32, u8>(ci, command_index, command_index + 1) == 1
     }
 }
 

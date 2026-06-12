@@ -1,4 +1,4 @@
-use core::cmp::min;
+use core::{cmp::min, sync::atomic::{fence, Ordering}};
 use alloc::{boxed::Box, slice, sync::Arc, vec::Vec};
 use bitvec::{bitbox, boxed::BitBox};
 use x86_64::structures::paging::PhysFrame;
@@ -63,6 +63,7 @@ impl AHCIDevice {
 
         port.issue_command(0);
         while port.command_busy(0) { }
+        fence(Ordering::SeqCst);
 
         let data = unsafe { slice::from_raw_parts(buf_ptr, 256) };
         let info = ATADriveInfo::new(data.try_into().unwrap());
@@ -141,15 +142,16 @@ impl CommandSlot<'_> {
 
     fn execute(&mut self) {
         self.state.port.issue_command(self.slot);
-
-        // TODO: Block here
         while self.state.port.command_busy(self.slot) { }
+        // Ensure DMA-written data is visible to the CPU before we read it.
+        fence(Ordering::SeqCst);
     }
 
     fn setup_command(&mut self, command: ATACommand, block: usize, count: usize)
         -> BlockDeviceResult<()> {
 
-        if count > self.device.sectors {
+        // Reject if block+count overflows or extends past the partition boundary.
+        if block.checked_add(count).map_or(true, |end| end > self.device.sectors) {
             return Err(BlockDeviceError::InvalidBlock);
         }
 
@@ -183,8 +185,8 @@ impl CommandSlot<'_> {
             / PRDTEntry::MAX_DATA_SIZE as usize;
 
         let cmd_h = self.command_header();
-        cmd_h.prd_bytes_trans = 0;
-        cmd_h.prdt_entries = prdt_entires as u16;
+        unsafe { core::ptr::write_volatile(&mut cmd_h.prd_bytes_trans, 0u32) };
+        unsafe { core::ptr::write_volatile(&mut cmd_h.prdt_entries, prdt_entires as u16) };
 
         let cmd_t = cmd_h.command_table();
 
@@ -252,6 +254,9 @@ impl Drop for CommandSlot<'_> {
         }
 
         self.state.available_commands.set(self.slot, true);
+        // Notify while still holding the state guard so allocate_command()
+        // waiters don't miss the wakeup (KCondvar convention).
+        self.device.shared.avail_commands_cv.notify_all();
     }
 }
 
@@ -279,10 +284,13 @@ impl BlockDevice for AHCIDevice {
         command.setup_command(ATACommand::READ_DMA_EXT, index, n_blocks)?;
         command.execute();
 
-        // Check that we got the amount of bytes we asked for
-        if command.buffer.unwrap() as u32 != command.command_header().prd_bytes_trans {
+        // Volatile read: prd_bytes_trans is written by the HBA via DMA.
+        let prd_trans = unsafe {
+            core::ptr::read_volatile(&command.command_header().prd_bytes_trans)
+        };
+        if command.buffer.unwrap() as u32 != prd_trans {
             return Err(BlockDeviceError::OperationFailed {
-                transferred: command.command_header().prd_bytes_trans as usize,
+                transferred: prd_trans as usize,
                 expected: command.buffer.unwrap(),
             });
         }
@@ -310,10 +318,12 @@ impl BlockDevice for AHCIDevice {
         command.copy_to_buffer(data);
         command.execute();
 
-        // Check that we sent the amount of bytes we asked for
-        if command.buffer.unwrap() as u32 != command.command_header().prd_bytes_trans {
+        let prd_trans = unsafe {
+            core::ptr::read_volatile(&command.command_header().prd_bytes_trans)
+        };
+        if command.buffer.unwrap() as u32 != prd_trans {
             return Err(BlockDeviceError::OperationFailed {
-                transferred: command.command_header().prd_bytes_trans as usize,
+                transferred: prd_trans as usize,
                 expected: command.buffer.unwrap(),
             });
         }
@@ -325,15 +335,26 @@ impl BlockDevice for AHCIDevice {
         let mbr_bytes: Box<[u8; 512]> = self.read_blocks(0, 1).unwrap()
             .try_into().unwrap();
         let mbr = MasterBootRecord::new(&mbr_bytes)?;
-        
+
         let mut partitions: Vec<Box<dyn BlockDevice>> = Vec::new();
         for entry in mbr.active_partitions() {
+            let lba_start = entry.lba_start() as usize;
+            let num_sectors = entry.num_sectors() as usize;
+
+            // Validate that the partition fits within the device.
+            match lba_start.checked_add(num_sectors) {
+                Some(end) if end <= self.sectors => {}
+                _ => {
+                    println!("AHCI: skipping invalid MBR partition \
+                        (lba={}, sectors={})", lba_start, num_sectors);
+                    continue;
+                }
+            }
+
             let device = AHCIDevice {
                 shared: Arc::clone(&self.shared),
-
-                start_sector: entry.lba_start() as usize,
-                sectors: entry.num_sectors() as usize,
-
+                start_sector: lba_start,
+                sectors: num_sectors,
                 info: self.info.clone(),
             };
 
