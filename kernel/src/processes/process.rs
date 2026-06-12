@@ -19,7 +19,7 @@ pub struct Process {
     user_page_table: [PageTableEntry; USER_PT_LEN],
     
     /// The Resources owned by the process
-    pub resources: IDTable<ProcessID, Box<dyn Resource + Send>>,
+    pub resources: IDTable<ResourceID, Box<dyn Resource + Send>>,
 }
 
 impl Process {

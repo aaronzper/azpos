@@ -12,7 +12,7 @@ pub mod devices;
 #[non_exhaustive]
 #[repr(u64)]
 #[derive(Debug, Copy, Clone)]
-/// azpOS syscalls. 
+/// azpOS syscalls.
 ///
 /// Syscalls are invoked via the `syscall` instruction, but are generally invoked
 /// via `libsystem` instead of manually. Return value is given by `rax`.
@@ -29,21 +29,23 @@ pub mod devices;
 /// are reserved and should be set to zero. Other than `rax`, the values of the
 /// other registers are undefined after a syscall (except for `rsp`, `rip`, and
 /// `rflags`) so save them before calling.
+///
+/// Discriminants are explicit and stable — append new variants at the end.
 pub enum Syscall {
     /// Yields control to the scheduler
     ///
     /// Takes no arguments
     ///
     /// Returns nothing
-    Yield,
-    
+    Yield = 0,
+
     /// Temporary test syscall that returns a resource that, when written to,
     /// prints to the kernel log
-    /// 
+    ///
     /// Takes no arguments
     ///
     /// Returns: A resource ID to the logger resource
-    GetLogger,
+    GetLogger = 1,
 
     /// Read from a resource
     ///
@@ -55,8 +57,8 @@ pub enum Syscall {
     /// Returns:
     /// - The number of bytes read
     /// - OR a negative error code
-    Read,
-    
+    Read = 2,
+
     /// Write to a resource
     ///
     /// Arguments:
@@ -67,8 +69,8 @@ pub enum Syscall {
     /// Returns:
     /// - The number of bytes written
     /// - OR a negative error code
-    Write,
-    
+    Write = 3,
+
     /// Closes a resource, removing it from the process and cleaning up whatever
     /// it holds
     ///
@@ -76,9 +78,9 @@ pub enum Syscall {
     /// 1. The resource ID
     ///
     /// Returns nothing
-    Close,
-    
-    /// Sets the seek head of a resource to the givern offset
+    Close = 4,
+
+    /// Sets the seek head of a resource to the given offset
     ///
     /// Arguments:
     /// 1. The resource ID
@@ -87,7 +89,7 @@ pub enum Syscall {
     /// Returns:
     /// - 0 on success
     /// - OR a negative error code
-    Seek,
+    Seek = 5,
 
     /// Returns a Resource that, when read, provides a serialized list of the
     /// devices on the system. TODO: Document further
@@ -95,5 +97,22 @@ pub enum Syscall {
     /// No arguments
     ///
     /// Returns the RID of that resource
-    ListDevices
+    ListDevices = 6,
+}
+
+impl TryFrom<u64> for Syscall {
+    type Error = ();
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Syscall::Yield),
+            1 => Ok(Syscall::GetLogger),
+            2 => Ok(Syscall::Read),
+            3 => Ok(Syscall::Write),
+            4 => Ok(Syscall::Close),
+            5 => Ok(Syscall::Seek),
+            6 => Ok(Syscall::ListDevices),
+            _ => Err(()),
+        }
+    }
 }
