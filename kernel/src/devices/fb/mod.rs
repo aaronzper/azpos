@@ -15,7 +15,7 @@ pub struct RgbPixel {
 impl RgbPixel {
     /// The average value of each pixel (used for grayscale displays)
     pub fn average(&self) -> u8 {
-        (self.red + self.green + self.blue) / 3
+        ((self.red as u16 + self.green as u16 + self.blue as u16) / 3) as u8
     }
 }
 
@@ -91,8 +91,12 @@ impl Framebuffer {
         }
     }
 
-    /// Draws a pixel at a given position to the back-buffer
+    /// Draws a pixel at a given position to the back-buffer.
+    /// Out-of-bounds coordinates are silently ignored.
     pub fn draw_pixel(&mut self, x: usize, y: usize, pixel: RgbPixel) {
+        if x >= self.width || y >= self.height {
+            return;
+        }
         let px_index = y * self.stride + x;
         let b_index = px_index * self.bytes_per_pixel;
         self.draw_pixel_at_byte(b_index, pixel);

@@ -77,7 +77,7 @@ impl FbTerminal {
                 let mut offset = TAB_WIDTH - (self.col % TAB_WIDTH);
                 if offset == 0 { offset = TAB_WIDTH; }
 
-                self.col += offset;
+                self.col = (self.col + offset).min(self.width());
             },
 
             c => {
@@ -85,24 +85,20 @@ impl FbTerminal {
                     Some(pixels) => {
                         for (i, p) in pixels.enumerate() {
                             let px = i % self.font.glyph_width;
-                            if px > MAX_WIDTH { continue; }
+                            if px >= MAX_WIDTH { continue; }
 
                             let x = px + (self.col * MAX_WIDTH);
                             let y = (i / self.font.glyph_width)
                                 + (self.row * self.font.glyph_height);
 
-
-                            let color = if p {
-                                self.fg
-                            } else {
-                                self.bg
-                            };
-
+                            let color = if p { self.fg } else { self.bg };
                             self.fb.draw_pixel(x, y, color);
                         }
                     },
 
-                    None => panic!("Invalid char"),
+                    // Unknown glyph: skip and advance column so the terminal
+                    // doesn't panic on out-of-font characters from userspace.
+                    None => {},
                 }
 
                 self.col += 1;
