@@ -1,7 +1,7 @@
 use core::arch::global_asm;
 use alloc::slice;
 use libsci::{resources::{result_to_rax, ResourceID}, Syscall};
-use x86_64::{registers::{control::{Efer, EferFlags}, model_specific::{GsBase, LStar, Star}}, VirtAddr};
+use x86_64::{registers::{control::{Efer, EferFlags}, model_specific::{GsBase, LStar, SFMask, Star}, rflags::RFlags}, VirtAddr};
 use crate::interrupts::GDT;
 
 /// System call handlers
@@ -20,8 +20,13 @@ unsafe extern "C" {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn syscall(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> i64 {
-    match syscall {
+extern "C" fn syscall(nr: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
+    let sc = match Syscall::try_from(nr) {
+        Ok(sc) => sc,
+        Err(()) => return -5, // InvalidSyscall
+    };
+
+    match sc {
         Syscall::Yield => handlers::sys_yield(),
 
         Syscall::Close =>
@@ -38,13 +43,12 @@ extern "C" fn syscall(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> i64 
             result_to_rax(handlers::sys_read(rid, buf))
         },
 
-
         Syscall::Write => {
             let rid = arg1 as ResourceID;
             let ptr = arg2 as *const u8;
             let len = arg3 as usize;
             let buf = unsafe { slice::from_raw_parts(ptr, len) };
-            
+
             result_to_rax(handlers::sys_write(rid, buf))
         },
 
@@ -52,7 +56,7 @@ extern "C" fn syscall(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> i64 
 
         Syscall::ListDevices => handlers::sys_list_devices() as i64,
 
-        _ => panic!("Invalid syscall type"),
+        _ => -5, // Non-exhaustive guard; unreachable via TryFrom
     }
 }
 
@@ -67,6 +71,9 @@ pub fn init_syscalls() {
     Star::write(GDT.user_code, GDT.user_data, GDT.code, GDT.data).unwrap();
     // Write syscall handlers address to LSTAR
     LStar::write(VirtAddr::from_ptr(syscall_entry as *const ()));
+    // Mask IF in SFMASK so the syscall instruction clears it atomically,
+    // closing the interrupt window between entry and swapgs/kstack setup.
+    SFMask::write(RFlags::INTERRUPT_FLAG);
     // Write user kstack address to GS_Base (will be swapped when entering userland)
     GsBase::write(VirtAddr::from_ptr(&raw const CURRENT_USER_KSTACK_PTR));
 

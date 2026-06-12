@@ -1,13 +1,13 @@
 .global syscall_entry
 syscall_entry:
-    cli
+    # SFMASK cleared IF on syscall entry — no cli needed here.
     mov rbx, rsp
     swapgs
     mov rsp, gs:[0]
     push rbx # Save caller RSP
     push rcx # Save caller RIP
     push r11 # Save caller RFLAGS
-    sti
+    sti      # Safe: on kernel stack with kernel GS-base
 
     # Move second argument back to RCX
     mov rcx, r8
@@ -20,6 +20,5 @@ syscall_entry:
     pop rbx
     swapgs
     mov rsp, rbx
-    sti
-    
+    # sysretq restores RFLAGS (including IF) from r11 atomically — no sti here.
     sysretq
