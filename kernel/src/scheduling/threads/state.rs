@@ -1,6 +1,6 @@
 use x86_64::{registers::rflags::RFlags, structures::idt::InterruptStackFrameValue, VirtAddr};
 
-use crate::{interrupts::GDT, memory::user::USER_END_ADDR};
+use crate::interrupts::GDT;
 
 #[derive(Clone, Debug)]
 #[repr(C)]
@@ -57,8 +57,11 @@ impl CpuState {
         }
     }
 
-    /// Returns whether the state is currently at a userland RIP
+    /// Returns whether this saved state belongs to a user thread.
+    ///
+    /// Compares the saved code segment against the kernel code selector;
+    /// user threads carry `GDT.user_code`, kernel threads carry `GDT.code`.
     pub fn is_user(&self) -> bool {
-        self.int_stack.instruction_pointer.as_u64() <= USER_END_ADDR
+        self.int_stack.code_segment != GDT.code.0 as u64
     }
 }

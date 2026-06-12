@@ -7,14 +7,23 @@ pub struct FilePath {
 }
 
 impl FilePath {
-    /// Constructs a `FilePath` from an owned string containining the raw
+    /// Constructs a `FilePath` from an owned string containing the raw
     /// path. Directories are delimited by `/`. Should start with a `/` to
     /// denote the root directory.
     ///
-    /// Returns `None` if the path is invalid.
+    /// Returns `None` if the path is invalid.  Invalid paths include those
+    /// that don't start with `/`, contain empty components (`//`), or contain
+    /// `.` or `..` components.
     pub fn new(path: String) -> Option<Self> {
         if !path.starts_with("/") {
             return None;
+        }
+
+        // Validate components (split_terminator ignores a trailing /)
+        for part in path[1..].split_terminator('/') {
+            if part.is_empty() || part == "." || part == ".." {
+                return None;
+            }
         }
 
         Some(Self {

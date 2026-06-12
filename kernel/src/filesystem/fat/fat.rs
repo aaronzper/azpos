@@ -45,17 +45,24 @@ impl FileAllocationTable {
         }
     }
 
-    /// Traverses the FAT to get a cluster chain sarting at a certain index.
+    /// Traverses the FAT to get a cluster chain starting at a certain index.
     ///
     /// If the cluster at `start_index` is part of a valid chain, returns a
-    /// list of clusters indexes making up the chain, starting with `start_index`.
+    /// list of cluster indexes making up the chain, starting with `start_index`.
     ///
     /// If it isn't (references a free cluster, an invalid index, etc),
-    /// returns `None`.
+    /// returns `None`.  Also returns `None` if the chain is longer than
+    /// `num_clusters` entries, guarding against cyclic FATs that would
+    /// otherwise hang the kernel.
     pub fn get_chain(&self, start_index: u32) -> Option<Box<[u32]>> {
         let mut chain = Vec::new();
         let mut i = start_index;
         loop {
+            // A valid chain can't be longer than the total number of clusters.
+            if chain.len() >= self.num_clusters as usize {
+                return None;
+            }
+
             match self.get_entry(i)? {
                 FATEntry::Allocated { next } => {
                     chain.push(i);
