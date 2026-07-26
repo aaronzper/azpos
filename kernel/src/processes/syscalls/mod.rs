@@ -48,7 +48,8 @@ extern "C" fn syscall(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> i64 
             result_to_rax(handlers::sys_write(rid, buf))
         },
 
-        Syscall::Seek => handlers::sys_seek(),
+        Syscall::Seek =>
+            result_to_rax(handlers::sys_seek(arg1 as ResourceID, arg2 as usize)),
 
         Syscall::ListDevices => handlers::sys_list_devices() as i64,
 

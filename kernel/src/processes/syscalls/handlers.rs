@@ -56,8 +56,17 @@ pub fn sys_write(rid: ResourceID, buf: &[u8]) -> ResourceResult {
     resource.write(buf)
 }
 
-pub fn sys_seek() -> i64 {
-    todo!()
+pub fn sys_seek(rid: ResourceID, offset: usize) -> ResourceResult {
+    let pid = SCHEDULER.lock().current_proc().unwrap();
+    let mut procs = PROCESSES.lock();
+    let p = procs.get_entry_mut(pid).unwrap();
+
+    let resource = match p.resources.get_entry_mut(rid) {
+        Some(r) => r,
+        None => return Err(ResourceError::ResourceNotFound),
+    };
+
+    resource.seek(offset)
 }
 
 pub fn sys_list_devices() -> ResourceID {
