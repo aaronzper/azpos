@@ -26,6 +26,15 @@ fn make_syscall_3_args(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> i64
     unsafe { make_syscall(syscall, arg1, arg2, arg3) }
 }
 
+/// Writes `bytes` to a new logger resource and ignores each error.
+///
+/// The panic handler uses this function. It must not panic, so it does not
+/// convert the return values.
+pub(crate) fn log_raw(bytes: &[u8]) {
+    let rid = make_syscall_no_args(Syscall::GetLogger) as u64;
+    make_syscall_3_args(Syscall::Write, rid, bytes.as_ptr() as u64, bytes.len() as u64);
+}
+
 pub fn sys_yield() {
     make_syscall_no_args(Syscall::Yield);
 }

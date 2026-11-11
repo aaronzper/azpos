@@ -2,6 +2,7 @@
 name = "azpos"
 version = "0.1.0"
 edition = "2024"
+default-run = "azpos"
 
 [build-dependencies]
 bootloader = "0.11.10"
@@ -11,10 +12,29 @@ fatfs = "0.3"
 fscommon  = "0.1"
 azpos-kernel = { path = "kernel", artifact = "bin", target = "x86_64-unknown-none" }
 adam = { path = "programs/adam", artifact = "bin", target = "x86_64-unknown-none" }
+systest = { path = "programs/systest", artifact = "bin", target = "x86_64-unknown-none" }
 
 [dependencies]
 # used for UEFI booting in QEMU
 ovmf-prebuilt = "0.1.0-alpha.1"
+# The test harness builds disk images when it runs. `build.rs` shares the
+# code in `src/image.rs`, so these also appear in [build-dependencies].
+bootloader = "0.11.10"
+mbrman = "0.6"
+fatfs = "0.3"
+fscommon  = "0.1"
+libtestkit = { path = "libraries/libtestkit" }
+serde_json = "1"
+
+# Kernel tests, then the user test program, on the test kernel
+[[test]]
+name = "ktest"
+harness = false
+
+# End-to-end test: the user test program on the production kernel
+[[test]]
+name = "e2e"
+harness = false
 
 [workspace]
 members = [
@@ -22,7 +42,9 @@ members = [
 
     "libraries/libsci", 
     "libraries/libsystem", 
+    "libraries/libtestkit",
 
-    "programs/adam"
+    "programs/adam",
+    "programs/systest",
 ]
 
