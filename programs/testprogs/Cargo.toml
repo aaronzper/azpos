@@ -1,0 +1,8 @@
+[package]
+name = "testprogs"
+description = "Small fixture programs for the kernel tests. Each binary does one thing, for example one CPU fault."
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+libsystem = { path = "../../libraries/libsystem" }

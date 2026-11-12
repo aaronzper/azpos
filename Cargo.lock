@@ -60,6 +60,7 @@ dependencies = [
  "ovmf-prebuilt",
  "serde_json",
  "systest",
+ "testprogs",
 ]
 
 [[package]]
@@ -774,6 +775,13 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys",
+]
+
+[[package]]
+name = "testprogs"
+version = "0.1.0"
+dependencies = [
+ "libsystem",
 ]
 
 [[package]]

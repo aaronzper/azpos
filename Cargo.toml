@@ -13,6 +13,7 @@ fscommon  = "0.1"
 azpos-kernel = { path = "kernel", artifact = "bin", target = "x86_64-unknown-none" }
 adam = { path = "programs/adam", artifact = "bin", target = "x86_64-unknown-none" }
 systest = { path = "programs/systest", artifact = "bin", target = "x86_64-unknown-none" }
+testprogs = { path = "programs/testprogs", artifact = "bin", target = "x86_64-unknown-none" }
 
 [dependencies]
 # used for UEFI booting in QEMU
@@ -46,5 +47,6 @@ members = [
 
     "programs/adam",
     "programs/systest",
+    "programs/testprogs",
 ]
 

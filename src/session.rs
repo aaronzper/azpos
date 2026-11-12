@@ -567,6 +567,10 @@ fn build_image(target: &Target, user_args: &str, path: &Path) {
         Target::TestKernel { kernel_elf } => {
             files.push(RootFile::from_host("Programs/adam.exe", &artifacts::adam_elf()));
             files.push(RootFile::new("Programs/systest.exe", systest));
+            // The kernel tests in `kernel/src/processes/` start these programs
+            for (name, path) in artifacts::test_programs() {
+                files.push(RootFile::from_host(&format!("Tests/progs/{name}"), &path));
+            }
             kernel_elf.clone()
         }
         Target::Production => {

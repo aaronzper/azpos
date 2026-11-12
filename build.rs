@@ -12,6 +12,10 @@ fn artifact(var: &str) -> PathBuf {
     PathBuf::from(std::env::var_os(var).unwrap_or_else(|| panic!("{var} is not set")))
 }
 
+/// The binaries of `programs/testprogs`. `artifacts::test_programs` in
+/// `src/lib.rs` has the same list.
+const TEST_PROGRAMS: [&str; 8] = ["yield", "logloop", "spin", "ud2", "nullrd", "div0", "wrkern", "hlt"];
+
 fn main() {
     // set by cargo, build scripts should use this directory for output files
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
@@ -38,5 +42,10 @@ fn main() {
     println!("cargo:rustc-env=AZPOS_KERNEL_ELF={}", kernel.display());
     println!("cargo:rustc-env=AZPOS_ADAM_ELF={}", adam.display());
     println!("cargo:rustc-env=AZPOS_SYSTEST_ELF={}", systest.display());
+    // The fixture programs of the kernel tests
+    for name in TEST_PROGRAMS {
+        let path = artifact(&format!("CARGO_BIN_FILE_TESTPROGS_{name}"));
+        println!("cargo:rustc-env=AZPOS_TESTPROG_{name}={}", path.display());
+    }
     println!("cargo:rustc-env=AZPOS_WORK_DIR={}", out_dir.display());
 }

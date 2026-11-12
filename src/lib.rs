@@ -44,6 +44,20 @@ pub mod artifacts {
         PathBuf::from(env!("AZPOS_SYSTEST_ELF"))
     }
 
+    /// The fixture programs of the kernel tests, as pairs of name and path.
+    /// `build.rs` has the same list of names.
+    pub fn test_programs() -> [(&'static str, PathBuf); 8] {
+        macro_rules! prog {
+            ($name:literal) => {
+                ($name, PathBuf::from(env!(concat!("AZPOS_TESTPROG_", $name))))
+            };
+        }
+        [
+            prog!("yield"), prog!("logloop"), prog!("spin"), prog!("ud2"),
+            prog!("nullrd"), prog!("div0"), prog!("wrkern"), prog!("hlt"),
+        ]
+    }
+
     /// A directory for files that the harness creates
     pub fn work_dir() -> PathBuf {
         PathBuf::from(env!("AZPOS_WORK_DIR"))
