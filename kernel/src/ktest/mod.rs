@@ -18,6 +18,7 @@ use libtestkit::{protocol::SUITE_KERNEL, run_suite, Args, Case};
 use spin::Once;
 
 use crate::{
+    devices::storage::BlockDevice,
     filesystem::fat::FATFilesystem,
     scheduling::{thread_yield, threads::{Thread, ThreadID}, SCHEDULER},
 };
@@ -28,10 +29,14 @@ mod exit;
 mod fw_cfg;
 /// A block device in memory
 mod ramdisk;
+/// A builder for small ELF files
+mod elf;
 
 pub use exit::on_panic;
 #[allow(unused_imports)]
 pub use ramdisk::{RamDisk, RAM_BLOCK_SIZE};
+#[allow(unused_imports)]
+pub use elf::{minimal_elf, Segment};
 // The prelude for test modules: `use crate::ktest::*;`
 #[allow(unused_imports)]
 pub use libtestkit::{check, check_eq, check_matches, check_ne, fail, ktest, OrFail};
@@ -70,7 +75,7 @@ pub fn run(cases: &[&Case]) {
     }
 }
 
-struct RootFs(FATFilesystem<'static>);
+struct RootFs(FATFilesystem<'static>, *mut dyn BlockDevice);
 
 // The test cases run one at a time, and the file system is read-only.
 unsafe impl Send for RootFs {}
@@ -78,12 +83,32 @@ unsafe impl Sync for RootFs {}
 
 static ROOT_FS: Once<RootFs> = Once::new();
 
+/// Mounts the test disk on the first call
+fn root_disk() -> &'static RootFs {
+    // The mount step needs more stack than a case has left
+    ROOT_FS.call_once(|| on_big_stack(|| {
+        let (fs, spare) = crate::mount_root_fs_and_spare();
+        RootFs(fs, spare)
+    }))
+}
+
 /// Returns the root file system of the test disk. The first call mounts it.
 ///
 /// The host puts the fixture files of `azpos::fixtures` in the directory
 /// `/tests` of this disk.
 pub fn root_fs() -> &'static FATFilesystem<'static> {
-    &ROOT_FS.call_once(|| RootFs(crate::mount_root_fs())).0
+    &root_disk().0
+}
+
+/// Returns partition 1 of the test disk, the boot partition.
+///
+/// The kernel does not use this partition after boot.
+/// A case can write to it, because QEMU discards the writes at the end of the boot.
+/// Use the value in one case at a time, and do not keep it after the case.
+#[allow(dead_code)]
+pub fn spare_partition() -> &'static mut dyn BlockDevice {
+    // SAFETY: the cases run one at a time, so only one reference is in use.
+    unsafe { &mut *root_disk().1 }
 }
 
 /// Runs `f` in a new kernel thread and returns when the thread is complete
@@ -100,6 +125,53 @@ pub fn run_in_thread<F: FnOnce() + Send + 'static>(f: F) {
     while !done.load(Ordering::SeqCst) {
         thread_yield();
     }
+}
+
+/// The size of the stack that `on_big_stack` uses
+const BIG_STACK_SIZE: usize = 64 * 1024;
+
+/// Runs `f` on a stack of `BIG_STACK_SIZE` bytes on the heap, in the current thread.
+///
+/// A kernel thread has a stack of 16 KiB.
+/// Some kernel calls need more than that in a debug build, for example `spawn_proc`.
+#[allow(dead_code)]
+pub fn on_big_stack<R, F: FnOnce() -> R>(f: F) -> R {
+    use alloc::{boxed::Box, vec};
+    use core::ffi::c_void;
+
+    /// Calls the closure that `data` points to
+    extern "C" fn trampoline(data: *mut c_void) {
+        let call = unsafe { &mut *(data as *mut &mut dyn FnMut()) };
+        call();
+    }
+
+    let stack: Box<[u8]> = vec![0u8; BIG_STACK_SIZE].into_boxed_slice();
+    // The System V ABI needs a stack top with 16-byte alignment
+    let top = (stack.as_ptr() as usize + BIG_STACK_SIZE) & !0xF;
+
+    let mut f = Some(f);
+    let mut result = None;
+    let mut call = || result = f.take().map(|f| f());
+    let mut call_dyn: &mut dyn FnMut() = &mut call;
+    let data = &mut call_dyn as *mut &mut dyn FnMut() as *mut c_void;
+
+    // R12 is callee-saved, so it keeps the old stack pointer across the call
+    unsafe {
+        core::arch::asm!(
+            "mov r12, rsp",
+            "mov rsp, rsi",
+            "call rax",
+            "mov rsp, r12",
+            in("rdi") data,
+            in("rsi") top,
+            in("rax") trampoline as usize,
+            out("r12") _,
+            clobber_abi("C"),
+        );
+    }
+
+    drop(stack);
+    result.expect("the closure did not run")
 }
 
 /// The maximum number of yields in one call of `wait_until`

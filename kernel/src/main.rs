@@ -93,6 +93,13 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 ///
 /// The drive and the file system stay alive until shutdown.
 fn mount_root_fs() -> FATFilesystem<'static> {
+    mount_root_fs_and_spare().0
+}
+
+/// Mounts the root partition, as `mount_root_fs` does.
+///
+/// Also returns partition 1, the boot partition. The kernel tests write to it.
+fn mount_root_fs_and_spare() -> (FATFilesystem<'static>, &'static mut dyn BlockDevice) {
     let pci = PCIController::new();
     let ahci_pci = pci.devices().iter()
         .find(|x| {
@@ -105,7 +112,10 @@ fn mount_root_fs() -> FATFilesystem<'static> {
     let device = ahci.devices()[0].take_device().unwrap();
     let partitions = Box::leak(device.partition().unwrap());
 
-    FATFilesystem::mount(partitions[2].as_mut()).unwrap()
+    let (first, rest) = partitions.split_at_mut(2);
+    let spare = first[1].as_mut();
+
+    (FATFilesystem::mount(rest[0].as_mut()).unwrap(), spare)
 }
 
 /// Loads the program at `path` in `fs` and starts it as a process
