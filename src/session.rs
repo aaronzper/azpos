@@ -182,6 +182,8 @@ struct Boot<'a> {
     panic_text: Option<(Vec<String>, Instant)>,
     /// The serial lines since the current case started
     output: Vec<String>,
+    /// The index of the last `start` or `skip` record of this boot
+    last_index: Option<usize>,
 }
 
 impl<'a> Boot<'a> {
@@ -195,6 +197,7 @@ impl<'a> Boot<'a> {
             idle_deadline: now + options.boot_timeout,
             panic_text: None,
             output: Vec::new(),
+            last_index: None,
         }
     }
 
@@ -261,6 +264,7 @@ impl<'a> Boot<'a> {
                     .map(|secs| Duration::from_secs(secs as u64))
                     .unwrap_or(self.options.case_timeout);
                 self.output.clear();
+                self.last_index = Some(index);
                 self.running = Some(Running { index, name, flags, deadline: now + limit });
             }
 
@@ -294,8 +298,9 @@ impl<'a> Boot<'a> {
                 self.idle_deadline = now + self.options.boot_timeout;
             }
 
-            Event::Skip { name, .. } => {
+            Event::Skip { index, name, .. } => {
                 self.output.clear();
+                self.last_index = Some(index);
                 self.record(report, name, Outcome::Skipped);
             }
 
@@ -447,22 +452,38 @@ fn spawn_readers(child: &mut Child) -> Receiver<Message> {
     receiver
 }
 
-/// Boots QEMU one time and reads its output until the boot ends
+/// A QEMU process that stops when this value drops.
+///
+/// A panic in the harness then does not leave QEMU alive.
+struct QemuChild(Child);
+
+impl Drop for QemuChild {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Boots QEMU one time and reads its output until the boot ends.
+///
+/// Also returns the index of the last case that started or was skipped.
 fn boot_once(
     image: &Path,
     kernel_args: &str,
     expect: Vec<&'static str>,
     options: &Options,
     report: &mut Report,
-) -> BootEnd {
+) -> (BootEnd, Option<usize>) {
     let mut command = qemu::test_command(image, kernel_args);
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let mut child = match command.spawn() {
-        Ok(child) => child,
-        Err(e) => return BootEnd::Lost(format!("Cannot start qemu-system-x86_64: {e}")),
+        Ok(child) => QemuChild(child),
+        Err(e) => {
+            return (BootEnd::Lost(format!("Cannot start qemu-system-x86_64: {e}")), None);
+        }
     };
-    let receiver = spawn_readers(&mut child);
+    let receiver = spawn_readers(&mut child.0);
 
     let mut boot = Boot::new(options, expect, Instant::now());
     let mut qemu_errors = Vec::new();
@@ -480,7 +501,7 @@ fn boot_once(
                 None
             }
             Ok(Message::Closed) | Err(RecvTimeoutError::Disconnected) => {
-                let status = child.wait().ok().and_then(|s| s.code());
+                let status = child.0.wait().ok().and_then(|s| s.code());
                 Some(boot.on_exit(status, report))
             }
             Err(RecvTimeoutError::Timeout) => boot.on_tick(Instant::now(), report),
@@ -492,34 +513,48 @@ fn boot_once(
     };
 
     // STOPGAP: the user test program cannot exit (GitHub #4) and the
-    // production kernel does not stop QEMU. The harness stops QEMU here.
-    let _ = child.kill();
-    let _ = child.wait();
+    // production kernel does not stop QEMU. The drop of `child` stops QEMU.
+    drop(child);
     let _ = std::io::stdout().flush();
 
-    match end {
+    let end = match end {
         BootEnd::Lost(reason) if !qemu_errors.is_empty() => {
             BootEnd::Lost(format!("{reason}\nQEMU error output:\n{}", qemu_errors.join("\n")))
         }
         end => end,
-    }
+    };
+    (end, boot.last_index)
 }
 
 /// Returns the argument text that both guest runners understand
-fn guest_args(options: &Options, start: usize) -> String {
+fn guest_args(options: &Options, start: usize, limit: Option<usize>) -> String {
     let mut args = format!(
         "start={start} full={} list={}",
         options.full as u8,
         options.list as u8,
     );
+    if let Some(limit) = limit {
+        args.push_str(&format!(" limit={limit}"));
+    }
     if let Some(filter) = &options.filter {
         args.push_str(&format!(" filter={filter}"));
     }
     args
 }
 
-/// Builds the disk image for one boot and returns its path
-fn build_image(target: &Target, user_args: &str) -> PathBuf {
+/// Returns the path of the disk image of this session.
+///
+/// The name contains the process ID, so two sessions can run at the same time.
+fn image_path(target: &Target) -> PathBuf {
+    let name = match target {
+        Target::TestKernel { .. } => "ktest",
+        Target::Production => "e2e",
+    };
+    artifacts::work_dir().join(format!("{name}-{}.img", std::process::id()))
+}
+
+/// Builds the disk image for one boot at `path`
+fn build_image(target: &Target, user_args: &str, path: &Path) {
     // STOPGAP: the user test program has no arguments (GitHub #5, #41).
     // The harness writes them into the ELF file.
     let mut systest = std::fs::read(artifacts::systest_elf()).expect("Cannot read the systest ELF");
@@ -528,23 +563,104 @@ fn build_image(target: &Target, user_args: &str) -> PathBuf {
 
     let mut files = fixtures::files();
 
-    let (kernel, name) = match target {
+    let kernel = match target {
         Target::TestKernel { kernel_elf } => {
             files.push(RootFile::from_host("Programs/adam.exe", &artifacts::adam_elf()));
             files.push(RootFile::new("Programs/systest.exe", systest));
-            (kernel_elf.clone(), "ktest.img")
+            kernel_elf.clone()
         }
         Target::Production => {
             // STOPGAP: no process can start another process (GitHub #5), so
             // the test program takes the place of the init process.
             files.push(RootFile::new("Programs/adam.exe", systest));
-            (artifacts::kernel_elf(), "e2e.img")
+            artifacts::kernel_elf()
         }
     };
 
-    let path = artifacts::work_dir().join(name);
-    image::create_bios_image(&kernel, &path, &files);
-    path
+    image::create_bios_image(&kernel, path, &files);
+}
+
+/// The arguments and suites of one boot
+#[derive(Debug, PartialEq, Eq)]
+struct BootPlan {
+    /// The suites that the boot runs, in order
+    suites: Vec<&'static str>,
+    kernel_start: usize,
+    user_start: usize,
+    /// The maximum number of cases that each suite selects
+    limit: Option<usize>,
+}
+
+/// The state of the boot loop of one session.
+///
+/// This type does no I/O, so the unit tests can drive it with fake boot ends.
+#[derive(Debug)]
+struct Schedule {
+    /// The suites that are not complete, in order
+    suites: Vec<&'static str>,
+    kernel_start: usize,
+    user_start: usize,
+    /// One boot for each case
+    isolate: bool,
+}
+
+impl Schedule {
+    fn new(suites: Vec<&'static str>, isolate: bool) -> Self {
+        Self { suites, kernel_start: 0, user_start: 0, isolate }
+    }
+
+    /// Returns the plan of the next boot, or `None` if the session is complete
+    fn next_boot(&self) -> Option<BootPlan> {
+        let first = *self.suites.first()?;
+        let (suites, limit) = if self.isolate {
+            (vec![first], Some(1))
+        } else {
+            (self.suites.clone(), None)
+        };
+        Some(BootPlan {
+            suites,
+            kernel_start: self.kernel_start,
+            user_start: self.user_start,
+            limit,
+        })
+    }
+
+    fn set_start(&mut self, suite: &str, start: usize) {
+        if suite == SUITE_USER {
+            self.user_start = start;
+        } else {
+            self.kernel_start = start;
+        }
+    }
+
+    /// Records how a boot ended. Returns `Err` if the session cannot continue.
+    ///
+    /// `last_index` is the index of the last case that started or was skipped.
+    fn on_boot_end(&mut self, end: BootEnd, last_index: Option<usize>) -> Result<(), String> {
+        match end {
+            BootEnd::Complete if self.isolate => match last_index {
+                // The boot ran one case. The next boot runs the next case.
+                Some(index) => {
+                    let suite = self.suites[0];
+                    self.set_start(suite, index + 1);
+                }
+                // The boot selected no case, so the suite is complete
+                None => {
+                    self.suites.remove(0);
+                }
+            },
+            BootEnd::Complete => self.suites.clear(),
+            BootEnd::CaseStoppedBoot { suite, index } => {
+                // The suites before this suite are complete
+                if let Some(at) = self.suites.iter().position(|s| *s == suite) {
+                    self.suites.drain(..at);
+                }
+                self.set_start(&suite, index + 1);
+            }
+            BootEnd::Lost(reason) => return Err(reason),
+        }
+        Ok(())
+    }
 }
 
 /// Runs a test session and returns its results. Prints each case as it ends.
@@ -552,12 +668,17 @@ pub fn run(target: &Target, options: &Options) -> Report {
     let started = Instant::now();
     let mut report = Report::default();
 
-    let mut run_kernel = matches!(target, Target::TestKernel { .. }) && options.kernel;
-    let run_user = matches!(target, Target::Production) || options.user;
-    let mut kernel_start = 0;
-    let mut user_start = 0;
+    let mut suites = Vec::new();
+    if matches!(target, Target::TestKernel { .. }) && options.kernel {
+        suites.push(SUITE_KERNEL);
+    }
+    if matches!(target, Target::Production) || options.user {
+        suites.push(SUITE_USER);
+    }
+    let mut schedule = Schedule::new(suites, options.isolate);
+    let image = image_path(target);
 
-    loop {
+    while let Some(plan) = schedule.next_boot() {
         report.boots += 1;
         if report.boots > MAX_BOOTS {
             report.errors.push(format!("The session needs more than {MAX_BOOTS} boots"));
@@ -566,25 +687,17 @@ pub fn run(target: &Target, options: &Options) -> Report {
 
         let kernel_args = format!(
             "{} kernel={} user={}",
-            guest_args(options, kernel_start),
-            run_kernel as u8,
-            run_user as u8,
+            guest_args(options, plan.kernel_start, plan.limit),
+            plan.suites.contains(&SUITE_KERNEL) as u8,
+            plan.suites.contains(&SUITE_USER) as u8,
         );
-        let user_args = guest_args(options, user_start);
-
-        let mut expect = Vec::new();
-        if run_kernel {
-            expect.push(SUITE_KERNEL);
-        }
-        if run_user {
-            expect.push(SUITE_USER);
-        }
+        let user_args = guest_args(options, plan.user_start, plan.limit);
 
         let boot_started = Instant::now();
-        let image = build_image(target, &user_args);
+        build_image(target, &user_args, &image);
         let image_time = boot_started.elapsed();
 
-        let end = boot_once(&image, &kernel_args, expect, options, &mut report);
+        let (end, last_index) = boot_once(&image, &kernel_args, plan.suites, options, &mut report);
         if options.verbose {
             println!(
                 "  boot {}: image {:.1}s, QEMU {:.1}s, end: {end:?}",
@@ -594,24 +707,13 @@ pub fn run(target: &Target, options: &Options) -> Report {
             );
         }
 
-        match end {
-            BootEnd::Complete => break,
-            BootEnd::CaseStoppedBoot { suite, index } => {
-                if suite == SUITE_USER {
-                    // The kernel suite always ends before the user suite
-                    run_kernel = false;
-                    user_start = index + 1;
-                } else {
-                    kernel_start = index + 1;
-                }
-            }
-            BootEnd::Lost(reason) => {
-                report.errors.push(reason);
-                break;
-            }
+        if let Err(reason) = schedule.on_boot_end(end, last_index) {
+            report.errors.push(reason);
+            break;
         }
     }
 
+    let _ = std::fs::remove_file(&image);
     report.elapsed = started.elapsed();
     report
 }
@@ -798,6 +900,89 @@ mod tests {
         assert_eq!(end, Some(BootEnd::Complete));
         assert_eq!(outcomes(&report), [&Outcome::Skipped]);
         assert!(report.success());
+    }
+
+    fn stopped(suite: &str, index: usize) -> BootEnd {
+        BootEnd::CaseStoppedBoot { suite: suite.into(), index }
+    }
+
+    #[test]
+    fn a_normal_session_runs_both_suites_in_one_boot() {
+        let mut schedule = Schedule::new(vec![SUITE_KERNEL, SUITE_USER], false);
+        let plan = schedule.next_boot().unwrap();
+        assert_eq!(plan.suites, [SUITE_KERNEL, SUITE_USER]);
+        assert_eq!(plan.limit, None);
+
+        schedule.on_boot_end(BootEnd::Complete, Some(7)).unwrap();
+        assert_eq!(schedule.next_boot(), None);
+    }
+
+    #[test]
+    fn a_stop_in_the_user_suite_continues_with_only_the_user_suite() {
+        let mut schedule = Schedule::new(vec![SUITE_KERNEL, SUITE_USER], false);
+        schedule.on_boot_end(stopped(SUITE_KERNEL, 3), Some(3)).unwrap();
+        let plan = schedule.next_boot().unwrap();
+        assert_eq!(plan.suites, [SUITE_KERNEL, SUITE_USER]);
+        assert_eq!(plan.kernel_start, 4);
+
+        schedule.on_boot_end(stopped(SUITE_USER, 1), Some(1)).unwrap();
+        let plan = schedule.next_boot().unwrap();
+        assert_eq!(plan.suites, [SUITE_USER]);
+        assert_eq!(plan.user_start, 2);
+    }
+
+    #[test]
+    fn an_isolated_session_runs_one_case_in_each_boot() {
+        let mut schedule = Schedule::new(vec![SUITE_KERNEL, SUITE_USER], true);
+        let mut boots = Vec::new();
+
+        // Fake boots: the kernel suite selects cases 0 and 2. Case 2 stops
+        // the boot. The user suite selects case 0.
+        let ends = [
+            (BootEnd::Complete, Some(0)),
+            (stopped(SUITE_KERNEL, 2), Some(2)),
+            (BootEnd::Complete, None),
+            (BootEnd::Complete, Some(0)),
+            (BootEnd::Complete, None),
+        ];
+        for (end, last_index) in ends {
+            boots.push(schedule.next_boot().unwrap());
+            schedule.on_boot_end(end, last_index).unwrap();
+        }
+        assert_eq!(schedule.next_boot(), None);
+
+        let starts: Vec<_> = boots.iter()
+            .map(|p| (p.suites.clone(), p.kernel_start, p.user_start, p.limit))
+            .collect();
+        assert_eq!(starts, [
+            (vec![SUITE_KERNEL], 0, 0, Some(1)),
+            (vec![SUITE_KERNEL], 1, 0, Some(1)),
+            (vec![SUITE_KERNEL], 3, 0, Some(1)),
+            (vec![SUITE_USER], 3, 0, Some(1)),
+            (vec![SUITE_USER], 3, 1, Some(1)),
+        ]);
+    }
+
+    #[test]
+    fn a_lost_boot_ends_the_session() {
+        let mut schedule = Schedule::new(vec![SUITE_USER], true);
+        assert!(schedule.on_boot_end(BootEnd::Lost("x".into()), None).is_err());
+    }
+
+    #[test]
+    fn a_boot_records_the_last_started_or_skipped_index() {
+        let options = Options::default();
+        let now = Instant::now();
+        let mut report = Report::default();
+        let mut boot = Boot::new(&options, vec![SUITE_KERNEL], now);
+        assert_eq!(boot.last_index, None);
+
+        boot.on_line("@@T suite kernel 5", now, &mut report);
+        boot.on_line("@@T start 1 k::a", now, &mut report);
+        boot.on_line("@@T ok 1", now, &mut report);
+        assert_eq!(boot.last_index, Some(1));
+        boot.on_line("@@T skip 3 k::b crash", now, &mut report);
+        assert_eq!(boot.last_index, Some(3));
     }
 
     #[test]

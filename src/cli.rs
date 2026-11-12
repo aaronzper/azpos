@@ -17,6 +17,8 @@ pub struct Options {
     pub user: bool,
     /// Print each line of serial output
     pub verbose: bool,
+    /// Boot QEMU one time for each case
+    pub isolate: bool,
     /// The time limit of one case
     pub case_timeout: Duration,
     /// The time limit from the QEMU start to the first suite, and between
@@ -33,6 +35,7 @@ impl Default for Options {
             kernel: true,
             user: true,
             verbose: false,
+            isolate: false,
             case_timeout: Duration::from_secs(20),
             boot_timeout: Duration::from_secs(60),
         }
@@ -41,10 +44,14 @@ impl Default for Options {
 
 pub const USAGE: &str = "\
 Options (after `--` on the cargo command line):
-  [FILTER]          Run only the cases with a name that contains FILTER
+  [FILTER]          Run only the cases with a name that contains FILTER.
+                    The name starts with the module path, so `blob`
+                    selects the cases of `blob.rs`.
   --full            Also run the cases that stop the boot (known bugs that
                     crash, and should_panic cases). Each one costs a boot.
   --list            Print the cases and run none
+  --isolate         Boot QEMU one time for each case. This finds a case
+                    that depends on another case.
   --kernel-only     Run only the kernel suite
   --user-only       Run only the user suite
   --timeout SECS    The time limit of one case (default 20)
@@ -62,6 +69,7 @@ impl Options {
             match arg.as_str() {
                 "--full" => options.full = true,
                 "--list" => options.list = true,
+                "--isolate" => options.isolate = true,
                 "--kernel-only" => options.user = false,
                 "--user-only" => options.kernel = false,
                 "-v" | "--verbose" | "--nocapture" => options.verbose = true,
@@ -91,6 +99,9 @@ impl Options {
         if !options.kernel && !options.user {
             return Err("--kernel-only and --user-only exclude each other".to_string());
         }
+        if options.isolate && options.list {
+            return Err("--isolate and --list exclude each other".to_string());
+        }
 
         Ok(options)
     }
@@ -111,7 +122,10 @@ mod tests {
 
     #[test]
     fn parses_filter_and_flags() {
-        let options = parse(&["fat::", "--full", "--kernel-only", "--timeout", "5", "-v"]).unwrap();
+        let options = parse(&[
+            "fat::", "--full", "--kernel-only", "--timeout", "5", "-v", "--isolate",
+        ]).unwrap();
+        assert!(options.isolate);
         assert_eq!(options.filter.as_deref(), Some("fat::"));
         assert!(options.full);
         assert!(options.kernel);
@@ -127,5 +141,6 @@ mod tests {
         assert!(parse(&["--timeout"]).is_err());
         assert!(parse(&["--kernel-only", "--user-only"]).is_err());
         assert!(parse(&["a=b"]).is_err());
+        assert!(parse(&["--isolate", "--list"]).is_err());
     }
 }
