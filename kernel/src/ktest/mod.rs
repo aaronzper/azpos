@@ -19,7 +19,7 @@ use spin::Once;
 
 use crate::{
     filesystem::fat::FATFilesystem,
-    scheduling::{thread_yield, threads::Thread, SCHEDULER},
+    scheduling::{thread_yield, threads::{Thread, ThreadID}, SCHEDULER},
 };
 
 /// Functions that stop QEMU
@@ -100,6 +100,32 @@ pub fn run_in_thread<F: FnOnce() + Send + 'static>(f: F) {
     while !done.load(Ordering::SeqCst) {
         thread_yield();
     }
+}
+
+/// The maximum number of yields in one call of `wait_until`
+const WAIT_YIELDS: usize = 100_000;
+
+/// Starts `f` in a new kernel thread and returns its thread ID.
+///
+/// This function does not wait for the thread.
+#[allow(dead_code)]
+pub fn spawn_thread<F: FnOnce() + Send + 'static>(f: F) -> ThreadID {
+    let thread = Thread::new_thread(f, None);
+    SCHEDULER.lock().add_thread(thread)
+}
+
+/// Yields until `cond` is true.
+///
+/// Returns `false` if `cond` is still false after `WAIT_YIELDS` yields.
+#[allow(dead_code)]
+pub fn wait_until(mut cond: impl FnMut() -> bool) -> bool {
+    for _ in 0..WAIT_YIELDS {
+        if cond() {
+            return true;
+        }
+        thread_yield();
+    }
+    cond()
 }
 
 #[cfg(test)]
