@@ -83,3 +83,43 @@ extern "C" fn run_thread<F, T>(entrypoint: &mut F) -> !
 
     unsafe { thread_exit(); }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::sync::Arc;
+    use crate::ktest::*;
+
+    ktest! {
+        /// A new thread has not run and starts at its runner on its stack.
+        fn new_thread_has_not_started() {
+            let thread = Thread::new_thread(|| {}, None);
+            check!(!thread.started());
+            check_eq!(thread.runs(), 0);
+            check!(thread.proccess().is_none());
+            check_eq!(thread.state.int_stack.instruction_pointer, thread.entry_point);
+            check_eq!(thread.state.int_stack.stack_pointer, thread.stack_top());
+            check!(!thread.state.is_user());
+        }
+
+        /// `add_run` counts the runs, and the first run starts the thread.
+        fn add_run_starts_the_thread() {
+            let mut thread = Thread::new_thread(|| {}, None);
+            thread.add_run();
+            thread.add_run();
+            check!(thread.started());
+            check_eq!(thread.runs(), 2);
+        }
+
+        /// A thread that never runs drops its closure when the thread drops.
+        /// Today `new_thread` leaks the box of the closure.
+        #[known_bug(unfiled)]
+        fn dropped_thread_drops_its_closure() {
+            let shared = Arc::new(());
+            let owned = Arc::clone(&shared);
+            let thread = Thread::new_thread(move || { let _keep = &owned; }, None);
+            drop(thread);
+            check_eq!(Arc::strong_count(&shared), 1);
+        }
+    }
+}

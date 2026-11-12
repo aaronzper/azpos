@@ -112,3 +112,41 @@ pub fn init_interrupts() {
     PIC.lock().initialize();
     enable_interrupts();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::sync::Arc;
+    use core::sync::atomic::{AtomicBool, Ordering};
+    use crate::ktest::*;
+
+    ktest! {
+        /// The breakpoint handler returns to the code after `int3`.
+        fn breakpoint_returns_to_the_case() {
+            x86_64::instructions::interrupts::int3();
+            check!(interrupts_enabled());
+        }
+
+        /// Interrupts are on in the test thread and in a new kernel thread.
+        fn interrupts_are_on_in_a_test_thread() {
+            check!(interrupts_enabled());
+            let in_thread = Arc::new(AtomicBool::new(false));
+            let flag = Arc::clone(&in_thread);
+            run_in_thread(move || flag.store(interrupts_enabled(), Ordering::SeqCst));
+            check!(in_thread.load(Ordering::SeqCst));
+        }
+
+        /// The timer preempts a thread that does not yield.
+        /// The case spins with no yield until the other thread runs.
+        #[timeout(10)]
+        fn timer_preempts_a_thread_that_does_not_yield() {
+            let ran = Arc::new(AtomicBool::new(false));
+            let flag = Arc::clone(&ran);
+            spawn_thread(move || flag.store(true, Ordering::SeqCst));
+            while !ran.load(Ordering::SeqCst) {
+                core::hint::spin_loop();
+            }
+            check!(ran.load(Ordering::SeqCst));
+        }
+    }
+}
