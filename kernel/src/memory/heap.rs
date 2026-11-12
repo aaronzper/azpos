@@ -182,7 +182,7 @@ mod tests {
 
         /// An allocation larger than the address space gives null.
         /// Today the address arithmetic panics before the stack check.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(31, crash)]
         fn allocation_larger_than_the_address_space_gives_null() {
             let layout = Layout::from_size_align(1 << 47, 1).or_fail("layout")?;
             let ptr = unsafe { alloc(layout) };

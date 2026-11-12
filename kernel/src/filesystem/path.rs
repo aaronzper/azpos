@@ -130,7 +130,7 @@ mod tests {
 
         /// The directory of a file in the root directory is `/`. Today
         /// `path_dirs` builds an empty path and panics on the `unwrap`.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(71, crash)]
         fn path_dirs_of_a_root_file_is_the_root() {
             let p = path("/adam.exe").or_fail("new")?;
             check_eq!(p.path_dirs().as_str(), "/");

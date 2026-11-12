@@ -383,7 +383,7 @@ mod tests {
 
         /// The rustdoc says that a region with no full frame gives `None`.
         /// Today a start that rounds past the end gives `Some` of an empty range.
-        #[known_bug(unfiled)]
+        #[known_bug(66)]
         fn region_inside_one_page_gives_none() {
             check!(get_frames_from_region(&region(0x1000, 0x1000)).is_none());
             check!(get_frames_from_region(&region(0x1100, 0x1F00)).is_none());
@@ -492,7 +492,7 @@ mod tests {
 
         /// A freed frame is free for the next allocation.
         /// Today `next_alloc` stays above it, so the allocator skips it.
-        #[known_bug(unfiled)]
+        #[known_bug(66)]
         fn freed_frame_can_be_allocated_again() {
             let mut lock = PAGE_ALLOCATOR.lock();
             let alloc = lock.as_mut().or_fail("allocator")?;
@@ -506,7 +506,7 @@ mod tests {
 
         /// `alloc_range(0)` gives `None` or an empty range.
         /// Today `windows(0)` panics.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(66, crash)]
         fn alloc_range_of_zero_frames_is_empty() {
             let mut lock = PAGE_ALLOCATOR.lock();
             let alloc = lock.as_mut().or_fail("allocator")?;

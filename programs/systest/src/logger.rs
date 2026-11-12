@@ -61,7 +61,7 @@ cases! {
 
     /// The length counts bytes, not characters.
     /// Today the framebuffer terminal has no glyph for these characters and panics.
-    #[known_bug(unfiled, crash)]
+    #[known_bug(65, crash)]
     fn write_of_multibyte_text_gives_the_length_in_bytes() {
         let logger = sys_get_logger();
         let text = "systest: \u{e9}\u{20ac}";
