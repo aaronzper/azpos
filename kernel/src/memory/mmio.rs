@@ -83,3 +83,30 @@ pub unsafe fn alloc_mmio_block<T>(len: usize) -> Option<(*mut T, PhysFrameRange)
 
     Some((ptr, frames))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ktest::*;
+
+    ktest! {
+        fn read_bitfield_gives_the_bits_from_to() {
+            let raw: u32 = 0b1011_0110;
+            check_eq!(read_bitfield::<u32, u8>(raw, 1, 5), 0b1011);
+            check_eq!(read_bitfield::<u32, u32>(raw, 0, 32), raw);
+            check_eq!(read_bitfield::<u64, u64>(1 << 63, 63, 64), 1);
+        }
+
+        fn write_bitfield_changes_only_its_bits() {
+            let mut raw: u32 = 0xFFFF_FFFF;
+            write_bitfield(&mut raw, 4, 8, 0x3u8);
+            check_eq!(raw, 0xFFFF_FF3F);
+            check_eq!(read_bitfield::<u32, u8>(raw, 4, 8), 3);
+        }
+
+        #[should_panic("Couldn't fit bitfield value")]
+        fn read_bitfield_into_a_small_type_panics() {
+            let _: u8 = read_bitfield(0xFFFFu32, 0, 12);
+        }
+    }
+}

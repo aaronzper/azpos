@@ -84,3 +84,34 @@ impl TryFrom<u8> for Scancode {
         Ok(scancode)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ktest::*;
+
+    ktest! {
+        fn codes_from_the_table_give_the_right_scancode() {
+            check_matches!(Scancode::try_from(0x01).ok(), Some(Scancode::Escape));
+            check_matches!(Scancode::try_from(0x10).ok(), Some(Scancode::Char('q')));
+            check_matches!(Scancode::try_from(0x1C).ok(), Some(Scancode::Enter));
+            check_matches!(Scancode::try_from(0x2A).ok(), Some(Scancode::LeftShift));
+            check_matches!(Scancode::try_from(0x39).ok(), Some(Scancode::Char(' ')));
+            check_matches!(Scancode::try_from(0x3A).ok(), Some(Scancode::CapsLock));
+        }
+
+        /// Code 0x00 and the release codes (bit 7 set) are not in the table.
+        fn a_code_that_is_not_in_the_table_gives_err() {
+            for raw in [0x00u8, 0x37, 0x3B, 0x81, 0xFF] {
+                check!(Scancode::try_from(raw).is_err(), "raw {:#x}", raw);
+            }
+        }
+
+        /// Set 1 gives 0x1D for the left Control key.
+        /// `Scancode` has the variant `LeftControl`, but the table has no entry for 0x1D.
+        #[known_bug(unfiled)]
+        fn code_0x1d_is_left_control() {
+            check_matches!(Scancode::try_from(0x1D).ok(), Some(Scancode::LeftControl));
+        }
+    }
+}
