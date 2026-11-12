@@ -8,6 +8,20 @@ pub use resource::SystemResource;
 global_asm!(include_str!("make_syscall.s"));
 unsafe extern "C" {
     fn make_syscall(syscall: Syscall, arg1: u64, arg2: u64, arg3: u64) -> i64;
+
+    /// The same code as `make_syscall`, with an integer for the number.
+    /// A `Syscall` value with an invalid number is undefined behavior.
+    fn make_syscall_raw(number: u64, arg1: u64, arg2: u64, arg3: u64) -> i64;
+}
+
+/// Makes a syscall with a raw number. For tests of invalid numbers.
+///
+/// # Safety
+/// The kernel reads and writes memory at the pointers in the arguments.
+/// The caller must make sure that this is safe, or that the kernel rejects
+/// them.
+pub unsafe fn raw_syscall(number: u64, arg1: u64, arg2: u64, arg3: u64) -> i64 {
+    unsafe { make_syscall_raw(number, arg1, arg2, arg3) }
 }
 
 fn make_syscall_no_args(syscall: Syscall) -> i64 {
