@@ -69,7 +69,9 @@ pub fn run(cases: &[&Case]) {
         // user suite. The host stops QEMU when it reads `done user`. When
         // `exit` exists (GitHub #4), wait for the process here and call
         // `exit::exit_qemu`.
-        crate::spawn_from_fs(root_fs(), USER_TEST_PROGRAM, "systest");
+        // Kernel cases leave processes in `PROCESSES`.
+        // `spawn_proc` then needs a big stack (see `processes::tests::spawn`).
+        on_big_stack(|| crate::spawn_from_fs(root_fs(), USER_TEST_PROGRAM, "systest"));
     } else {
         exit::exit_qemu(exit::ExitCode::Success);
     }
