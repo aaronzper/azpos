@@ -271,6 +271,16 @@ impl<'a> Boot<'a> {
                 };
 
                 match self.running.take() {
+                    // A case with the `crash` flag did not crash, but it
+                    // failed. The bug can leave the kernel in a bad state,
+                    // for example after a write through a bad pointer. Do
+                    // not run more cases in this boot.
+                    Some(running) if running.index == index
+                        && running.flags.crash
+                        && raw != Raw::Ok =>
+                    {
+                        return Some(self.end_boot_in_case(report, running, raw));
+                    }
                     Some(running) if running.index == index => {
                         let outcome = classify(&running.flags, raw);
                         self.record(report, running.name, outcome);
@@ -763,6 +773,18 @@ mod tests {
 
         let mut boot = Boot::new(&options, vec![SUITE_KERNEL], now);
         assert!(matches!(boot.on_exit(Some(1), &mut report), BootEnd::Lost(_)));
+    }
+
+    #[test]
+    fn a_crash_case_that_fails_with_no_crash_stops_the_boot() {
+        let (report, end) = feed(vec![SUITE_USER], &[
+            "[PID 0] @@T suite user 2",
+            "[PID 0] @@T start 0 u::bad_pointer known_bug=26 crash",
+            "[PID 0] @@T fail 0 src/x.rs:1: check failed: x",
+        ]);
+
+        assert_eq!(end, Some(BootEnd::CaseStoppedBoot { suite: "user".into(), index: 0 }));
+        assert!(matches!(outcomes(&report)[..], [Outcome::XFail { ticket: 26, .. }]));
     }
 
     #[test]
