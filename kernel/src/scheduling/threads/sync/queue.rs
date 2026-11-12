@@ -122,3 +122,113 @@ impl<T, const S: usize> Drop for Buffer<T, S> {
         while self.try_pop().is_some() {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::{sync::Arc, vec::Vec};
+    use crate::ktest::*;
+    use super::super::condvar::tests::waiters;
+
+    fn drain<T, const S: usize>(buffer: &Buffer<T, S>) -> Vec<T> {
+        let mut items = Vec::new();
+        while let Some(item) = buffer.try_pop() {
+            items.push(item);
+        }
+        items
+    }
+
+    ktest! {
+        /// `try_pop` of an empty buffer gives `None`.
+        fn try_pop_of_an_empty_buffer_gives_none() {
+            let buffer: Buffer<u32, 4> = Buffer::new();
+            check!(buffer.try_pop().is_none());
+        }
+
+        /// Items leave in the order they enter.
+        fn items_leave_in_order() {
+            let buffer: Buffer<u32, 4> = Buffer::new();
+            for i in 0..3 {
+                buffer.push(i);
+            }
+            check_eq!(drain(&buffer), [0, 1, 2]);
+            check!(buffer.try_pop().is_none());
+        }
+
+        /// A full buffer drops the oldest item on `push`.
+        fn full_buffer_drops_the_oldest_item() {
+            let buffer: Buffer<u32, 4> = Buffer::new();
+            for i in 0..6 {
+                buffer.push(i);
+            }
+            check_eq!(drain(&buffer), [2, 3, 4, 5]);
+        }
+
+        /// A buffer of size 1 keeps only the newest item.
+        fn buffer_of_size_one_keeps_the_newest_item() {
+            let buffer: Buffer<u32, 1> = Buffer::new();
+            buffer.push(1);
+            buffer.push(2);
+            check_eq!(drain(&buffer), [2]);
+            buffer.push(3);
+            check_eq!(buffer.try_pop(), Some(3));
+        }
+
+        /// 1000 push and pop pairs keep the order across the wrap of the ring.
+        fn many_push_pop_pairs_keep_the_order() {
+            let buffer: Buffer<u32, 4> = Buffer::new();
+            buffer.push(0);
+            for i in 1..=1000 {
+                buffer.push(i);
+                check_eq!(buffer.try_pop(), Some(i - 1));
+            }
+            check_eq!(drain(&buffer), [1000]);
+        }
+
+        /// `pop` blocks until another thread pushes an item.
+        fn pop_blocks_until_a_push() {
+            let buffer: Arc<Buffer<u32, 4>> = Arc::new(Buffer::new());
+            let got = Arc::new(AtomicUsize::new(0));
+            let (b, g) = (Arc::clone(&buffer), Arc::clone(&got));
+            spawn_thread(move || {
+                g.store(b.pop() as usize + 1, Ordering::SeqCst);
+            });
+
+            let waiting = wait_until(|| waiters(&buffer.readable) == 1);
+            let early = got.load(Ordering::SeqCst);
+            buffer.push(7);
+            let done = wait_until(|| got.load(Ordering::SeqCst) != 0);
+
+            check!(waiting, "the reader did not wait");
+            check_eq!(early, 0);
+            check!(done, "the reader did not wake");
+            check_eq!(got.load(Ordering::SeqCst), 8);
+        }
+
+        /// The drop of a buffer drops each item in it.
+        fn drop_of_the_buffer_drops_each_item() {
+            let item = Arc::new(());
+            let buffer: Buffer<Arc<()>, 4> = Buffer::new();
+            for _ in 0..3 {
+                buffer.push(Arc::clone(&item));
+            }
+            drop(buffer);
+            check_eq!(Arc::strong_count(&item), 1);
+        }
+
+        /// An item that `push` overwrites is dropped.
+        /// Today `set_index` writes over the old item and leaks it.
+        #[known_bug(unfiled)]
+        fn overwritten_item_is_dropped() {
+            let oldest = Arc::new(());
+            let buffer: Buffer<Arc<()>, 4> = Buffer::new();
+            buffer.push(Arc::clone(&oldest));
+            for _ in 0..4 {
+                buffer.push(Arc::new(()));
+            }
+            let count = Arc::strong_count(&oldest);
+            drop(buffer);
+            check_eq!(count, 1);
+        }
+    }
+}

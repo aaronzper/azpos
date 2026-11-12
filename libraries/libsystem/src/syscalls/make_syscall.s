@@ -1,5 +1,8 @@
 .global make_syscall
+.global make_syscall_raw
+# `make_syscall_raw` takes the syscall number as an integer.
 make_syscall:
+make_syscall_raw:
     push rbp
     push rbx
     push r12

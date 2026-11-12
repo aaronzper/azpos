@@ -1,7 +1,16 @@
 use core::panic::PanicInfo;
 
+#[cfg(not(test))]
 use crate::{devices::fb::RgbPixel, interrupts::disable_interrupts, logger::{logger_initialized, set_fg_color}, println, scheduling::SCHEDULER};
 
+// A test build reports the panic to the host and stops QEMU.
+#[cfg(test)]
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    crate::ktest::on_panic(info)
+}
+
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     disable_interrupts();

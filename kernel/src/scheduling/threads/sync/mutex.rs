@@ -1,5 +1,4 @@
-use core::{cell::UnsafeCell, ops::{Deref, DerefMut}, sync::atomic::{AtomicBool, Ordering}};
-use alloc::vec::Vec;
+use core::{cell::UnsafeCell, ops::{Deref, DerefMut}, sync::atomic::{AtomicBool, Ordering}};use alloc::vec::Vec;
 use crate::scheduling::{thread_yield, BlockedThread, SCHEDULER};
 use super::KIntMutex;
 
@@ -107,5 +106,92 @@ impl<'a, T> Deref for KMutexGuard<'a, T> {
 impl<'a, T> DerefMut for KMutexGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.mutex.value.get() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::sync::Arc;
+    use core::sync::atomic::AtomicUsize;
+    use crate::ktest::*;
+
+    impl<T> KMutex<T> {
+        /// Returns the number of threads that wait for the lock
+        pub(crate) fn waiters(&self) -> usize {
+            self.blocks.lock().len()
+        }
+    }
+
+    ktest! {
+        /// `lock` gives access. The drop of the guard releases the lock.
+        fn lock_gives_access_and_drop_releases() {
+            let mutex = KMutex::new(1);
+            {
+                let mut guard = mutex.lock();
+                *guard += 1;
+            }
+            check!(!mutex.locked.load(Ordering::SeqCst));
+            let guard = mutex.try_lock().or_fail("try_lock after drop")?;
+            check_eq!(*guard, 2);
+        }
+
+        /// `try_lock` of a held lock gives `None`.
+        fn try_lock_of_a_held_lock_gives_none() {
+            let mutex = KMutex::new(());
+            let guard = mutex.lock();
+            let second = mutex.try_lock().is_none();
+            drop(guard);
+            check!(second);
+        }
+
+        /// A second thread blocks in `lock` until the first thread unlocks.
+        fn second_locker_blocks_until_unlock() {
+            let mutex = Arc::new(KMutex::new(()));
+            let got_lock = Arc::new(AtomicBool::new(false));
+            let guard = mutex.lock();
+
+            let (m, flag) = (Arc::clone(&mutex), Arc::clone(&got_lock));
+            spawn_thread(move || {
+                let _g = m.lock();
+                flag.store(true, Ordering::SeqCst);
+            });
+
+            let blocked = wait_until(|| mutex.blocks.lock().len() == 1);
+            let got_while_held = got_lock.load(Ordering::SeqCst);
+            drop(guard);
+            let got_after = wait_until(|| got_lock.load(Ordering::SeqCst));
+
+            check!(blocked, "the second thread did not block");
+            check!(!got_while_held);
+            check!(got_after);
+        }
+
+        /// Four threads add to a counter under the lock. No addition is lost.
+        /// The main thread locks and unlocks in a loop, so a lost wakeup
+        /// cannot hang the case.
+        #[timeout(30)]
+        fn four_threads_share_a_counter() {
+            let counter = Arc::new(KMutex::new(0usize));
+            let done = Arc::new(AtomicUsize::new(0));
+            for _ in 0..4 {
+                let (c, d) = (Arc::clone(&counter), Arc::clone(&done));
+                spawn_thread(move || {
+                    for _ in 0..200 {
+                        let mut guard = c.lock();
+                        let old = *guard;
+                        thread_yield();
+                        *guard = old + 1;
+                    }
+                    d.fetch_add(1, Ordering::SeqCst);
+                });
+            }
+            let all_done = wait_until(|| {
+                drop(counter.lock());
+                done.load(Ordering::SeqCst) == 4
+            });
+            check!(all_done, "{} of 4 threads complete", done.load(Ordering::SeqCst));
+            check_eq!(*counter.lock(), 800);
+        }
     }
 }

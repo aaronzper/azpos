@@ -55,8 +55,12 @@ dependencies = [
  "fatfs",
  "fscommon",
  "gpt 4.1.0",
+ "libtestkit",
  "mbrman 0.6.0",
  "ovmf-prebuilt",
+ "serde_json",
+ "systest",
+ "testprogs",
 ]
 
 [[package]]
@@ -68,6 +72,7 @@ dependencies = [
  "elf",
  "lazy_static",
  "libsci",
+ "libtestkit",
  "modular-bitfield",
  "num-traits",
  "pic8259",
@@ -439,6 +444,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "libtestkit"
+version = "0.1.0"
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -742,6 +751,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "systest"
+version = "0.1.0"
+dependencies = [
+ "libsystem",
+ "libtestkit",
+]
+
+[[package]]
 name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -758,6 +775,13 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys",
+]
+
+[[package]]
+name = "testprogs"
+version = "0.1.0"
+dependencies = [
+ "libsystem",
 ]
 
 [[package]]

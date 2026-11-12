@@ -112,3 +112,90 @@ pub fn init_interrupts() {
     PIC.lock().initialize();
     enable_interrupts();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::sync::Arc;
+    use core::sync::atomic::{AtomicBool, Ordering};
+    use crate::ktest::*;
+
+    ktest! {
+        /// The breakpoint handler returns to the code after `int3`.
+        fn breakpoint_returns_to_the_case() {
+            x86_64::instructions::interrupts::int3();
+            check!(interrupts_enabled());
+        }
+
+        /// Interrupts are on in the test thread and in a new kernel thread.
+        fn interrupts_are_on_in_a_test_thread() {
+            check!(interrupts_enabled());
+            let in_thread = Arc::new(AtomicBool::new(false));
+            let flag = Arc::clone(&in_thread);
+            run_in_thread(move || flag.store(interrupts_enabled(), Ordering::SeqCst));
+            check!(in_thread.load(Ordering::SeqCst));
+        }
+
+        /// The timer preempts a thread that does not yield.
+        /// The case spins with no yield until the other thread runs.
+        #[timeout(10)]
+        fn timer_preempts_a_thread_that_does_not_yield() {
+            let ran = Arc::new(AtomicBool::new(false));
+            let flag = Arc::clone(&ran);
+            spawn_thread(move || flag.store(true, Ordering::SeqCst));
+            while !ran.load(Ordering::SeqCst) {
+                core::hint::spin_loop();
+            }
+            check!(ran.load(Ordering::SeqCst));
+        }
+
+        /// A process that runs `ud2` ends. The kernel continues (GitHub #27).
+        /// Today the invalid opcode fault has no handler, and the kernel panics with a double fault.
+        #[known_bug(27, crash)]
+        fn invalid_opcode_in_a_process_ends_the_process() {
+            check_fault_ends_process("ud2")?;
+        }
+
+        /// A process that reads an unmapped address ends (GitHub #27).
+        #[known_bug(27, crash)]
+        fn page_fault_on_an_unmapped_address_ends_the_process() {
+            check_fault_ends_process("nullrd")?;
+        }
+
+        /// A process that writes to a kernel address ends (GitHub #27).
+        #[known_bug(27, crash)]
+        fn page_fault_on_a_kernel_address_ends_the_process() {
+            check_fault_ends_process("wrkern")?;
+        }
+
+        /// A process that divides by zero ends (GitHub #27).
+        #[known_bug(27, crash)]
+        fn divide_error_in_a_process_ends_the_process() {
+            check_fault_ends_process("div0")?;
+        }
+
+        /// A process that runs `hlt` in user mode ends (GitHub #27).
+        #[known_bug(27, crash)]
+        fn general_protection_fault_in_a_process_ends_the_process() {
+            check_fault_ends_process("hlt")?;
+        }
+    }
+
+    /// The number of yields that a fault case waits for the process to end
+    const FAULT_YIELDS: usize = 300;
+
+    /// Starts the fixture program `name`.
+    /// Checks that its process is gone after at most `FAULT_YIELDS` yields.
+    fn check_fault_ends_process(name: &str) -> libtestkit::TestResult {
+        use crate::processes::tests::{process_exists, spawn_test_program};
+
+        let pid = spawn_test_program(name).or_fail("spawn_test_program")?;
+        for _ in 0..FAULT_YIELDS {
+            if !process_exists(pid) {
+                return Ok(());
+            }
+            crate::scheduling::thread_yield();
+        }
+        fail!("process {pid} of `{name}` still exists after {FAULT_YIELDS} yields");
+    }
+}

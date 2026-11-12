@@ -128,3 +128,50 @@ pub fn init_memory(pmap_va: u64, p_regions: &MemoryRegions) {
         HEAP_ALLOCATOR.init(heap_start);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::boxed::Box;
+    use crate::ktest::*;
+
+    #[repr(align(64))]
+    struct Block([u8; 64]);
+
+    ktest! {
+        /// The physical map gives a second address for the bytes of the heap.
+        fn heap_pointer_resolves_through_the_physical_map() {
+            let block = Box::new(Block([0xA5; 64]));
+            let va = VirtAddr::from_ptr(&*block);
+            let pa = resolve_virt_addr(va).or_fail("resolve_virt_addr")?;
+            let alias = resolve_phys_addr(pa).or_fail("resolve_phys_addr")?;
+            check_ne!(alias, va);
+            let bytes = unsafe { &*(alias.as_ptr::<[u8; 64]>()) };
+            check_eq!(bytes, &block.0);
+        }
+
+        /// The null page is not mapped.
+        fn unmapped_address_resolves_to_none() {
+            check!(resolve_virt_addr(VirtAddr::new(0)).is_none());
+        }
+
+        /// The last byte of the physical map resolves.
+        fn last_byte_of_the_physical_map_resolves() {
+            let size = unsafe { PHYS_MAP_SIZE };
+            check!(resolve_phys_addr(PhysAddr::new(size - 1)).is_some());
+        }
+
+        /// The usable memory ends inside the physical map.
+        fn phys_size_is_inside_the_physical_map() {
+            check!(get_phys_size() > 0);
+            check!(get_phys_size() <= unsafe { PHYS_MAP_SIZE });
+        }
+
+        /// An address at the end of the physical map is a kernel error.
+        #[should_panic("is past the physical memory map size")]
+        fn resolve_phys_addr_past_the_map_panics() {
+            let size = unsafe { PHYS_MAP_SIZE };
+            let _ = resolve_phys_addr(PhysAddr::new(size));
+        }
+    }
+}
