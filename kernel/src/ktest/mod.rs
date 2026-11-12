@@ -26,8 +26,12 @@ use crate::{
 mod exit;
 /// Reader for the QEMU firmware configuration device
 mod fw_cfg;
+/// A block device in memory
+mod ramdisk;
 
 pub use exit::on_panic;
+#[allow(unused_imports)]
+pub use ramdisk::{RamDisk, RAM_BLOCK_SIZE};
 // The prelude for test modules: `use crate::ktest::*;`
 #[allow(unused_imports)]
 pub use libtestkit::{check, check_eq, check_matches, check_ne, fail, ktest, OrFail};
