@@ -109,7 +109,7 @@ mod tests {
 
         /// Set 1 gives 0x1D for the left Control key.
         /// `Scancode` has the variant `LeftControl`, but the table has no entry for 0x1D.
-        #[known_bug(unfiled)]
+        #[known_bug(18)]
         fn code_0x1d_is_left_control() {
             check_matches!(Scancode::try_from(0x1D).ok(), Some(Scancode::LeftControl));
         }

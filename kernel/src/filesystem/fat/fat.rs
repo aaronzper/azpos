@@ -221,7 +221,7 @@ mod tests {
 
         /// The clusters are 2 to `count + 1`, so `count` and `count + 1` are valid.
         /// Today `get_entry` rejects an index of `count` or more.
-        #[known_bug(unfiled)]
+        #[known_bug(69)]
         fn the_last_two_clusters_are_valid() {
             let fat = table(&[(2, COUNT + 1), (COUNT, EOF), (COUNT + 1, COUNT)]);
             check_eq!(fat.get_entry(2), Some(FATEntry::Allocated { next: COUNT + 1 }));
@@ -232,7 +232,7 @@ mod tests {
 
         /// A chain with a cycle is corrupt, so `get_chain` gives `None`.
         /// Today `get_chain` loops and fills the heap.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(69, crash)]
         #[timeout(5)]
         fn get_chain_with_a_cycle_gives_none() {
             let fat = table(&[(2, 3), (3, 2)]);

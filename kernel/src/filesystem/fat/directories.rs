@@ -330,7 +330,7 @@ mod tests {
 
         /// A year of 2236 does not fit in 7 bits, so the set gives `Err`.
         /// Today the cast to `u8` drops the high bits, and the year becomes 1980.
-        #[known_bug(unfiled)]
+        #[known_bug(70)]
         fn fat_date_rejects_a_year_that_wraps_in_u8() {
             let mut date = FATDate::new();
             check!(date.set_seconds(2236).is_err());
@@ -339,7 +339,7 @@ mod tests {
 
         /// A year before 1980 gives `Err`.
         /// Today the subtraction overflows and the kernel panics.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(70, crash)]
         fn fat_date_rejects_a_year_before_1980() {
             let mut date = FATDate::new();
             check!(date.set_seconds(1979).is_err());
