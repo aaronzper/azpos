@@ -23,6 +23,10 @@ mod args;
 /// Writes protocol records to the kernel log
 mod output;
 
+/// Cases with raw syscall numbers and arguments
+mod abi;
+/// Cases with bad buffer pointers and lengths
+mod pointers;
 /// Cases for `list_devices` and the blob resource that it returns
 mod devices;
 /// Cases for `get_logger` and the logger resource
@@ -39,6 +43,8 @@ static MODULES: &[&[Case]] = &[
     logger::CASES,
     resource::CASES,
     devices::CASES,
+    abi::CASES,
+    pointers::CASES,
 ];
 
 #[unsafe(no_mangle)]
