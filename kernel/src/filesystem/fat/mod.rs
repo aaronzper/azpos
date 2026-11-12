@@ -222,7 +222,7 @@ mod tests {
 
         /// An empty file has no cluster. `read_all` gives an empty buffer.
         /// Today it gives `None`, because cluster 0 is not a valid chain.
-        #[known_bug(unfiled)]
+        #[known_bug(68)]
         fn read_all_of_an_empty_file_gives_no_bytes() {
             let data = root_fs().read_all(&path("/tests/empty.txt")).or_fail("read_all")?;
             check_eq!(data.len(), 0);
@@ -230,7 +230,7 @@ mod tests {
 
         /// Today `FilePath::path_dirs` panics for a file in the root
         /// directory, so `read_all` panics too.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(71, crash)]
         fn read_all_reads_a_file_in_the_root_directory() {
             let data = root_fs().read_all(&path("/rootfile.txt")).or_fail("read_all")?;
             check_eq!(&*data, b"root");
