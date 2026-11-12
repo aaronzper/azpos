@@ -1,0 +1,7 @@
+[package]
+name = "libtestkit"
+description = "Test Kit Library. Holds the test case type, the guest test runner and the serial test protocol. The kernel tests, the user test program and the host harness share it."
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]

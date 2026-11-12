@@ -204,3 +204,164 @@ impl<'a> Iterator for FATDirIter<'a> {
         Some(e)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ktest::*;
+    use alloc::vec::Vec;
+
+    /// Builds one raw 32-byte directory entry with an 8.3 name
+    fn raw_entry(name: &[u8; 8], ext: &[u8; 3], attributes: u8, cluster: u32, size: u32) -> [u8; 32] {
+        let mut raw = [0u8; 32];
+        raw[0..8].copy_from_slice(name);
+        raw[8..11].copy_from_slice(ext);
+        raw[11] = attributes;
+        raw[20..22].copy_from_slice(&((cluster >> 16) as u16).to_le_bytes());
+        raw[26..28].copy_from_slice(&(cluster as u16).to_le_bytes());
+        raw[28..32].copy_from_slice(&size.to_le_bytes());
+        raw
+    }
+
+    const ATTR_DIRECTORY: u8 = 0x10;
+    const ATTR_LONG_NAME: u8 = 0x0F;
+
+    /// A directory with a file, a long-name entry, a subdirectory, then the
+    /// end marker and one entry after it
+    fn sample_dir() -> FATDirectory {
+        let mut data = Vec::new();
+        data.extend_from_slice(&raw_entry(b"HELLO   ", b"TXT", 0, 0x0012_0034, 26));
+        data.extend_from_slice(&raw_entry(b"Aname   ", b"   ", ATTR_LONG_NAME, 0, 0));
+        data.extend_from_slice(&raw_entry(b"NESTED  ", b"   ", ATTR_DIRECTORY, 9, 0));
+        data.extend_from_slice(&[0u8; 32]);
+        data.extend_from_slice(&raw_entry(b"AFTER   ", b"END", 0, 5, 1));
+        FATDirectory::new(data.into()).unwrap()
+    }
+
+    ktest! {
+        fn new_rejects_a_size_that_is_not_a_multiple_of_32() {
+            check!(FATDirectory::new(Box::from([0u8; 33])).is_none());
+            check!(FATDirectory::new(Box::from([0u8; 64])).is_some());
+        }
+
+        fn the_end_marker_sets_the_length() {
+            check_eq!(sample_dir().len(), 3);
+            check_eq!(sample_dir().iter().count(), 3);
+        }
+
+        fn full_name_joins_name_and_extension() {
+            let dir = sample_dir();
+            check_eq!(dir[0].full_name().as_deref(), Some("HELLO.TXT"));
+            check_eq!(dir[2].full_name().as_deref(), Some("NESTED"));
+        }
+
+        fn a_long_name_entry_has_no_full_name() {
+            check_eq!(sample_dir()[1].full_name(), None);
+        }
+
+        fn find_gives_the_entry_with_cluster_and_size() {
+            let dir = sample_dir();
+            let entry = dir.find("HELLO.TXT").or_fail("find")?;
+            check_eq!(entry.cluster(), 0x0012_0034);
+            check_eq!({ entry.file_size }, 26);
+            check!(!entry.attributes.directory());
+
+            check!(dir.find("NESTED").or_fail("find")?.attributes.directory());
+            check!(dir.find("MISSING.TXT").is_none());
+            check!(dir.find("AFTER.END").is_none());
+        }
+
+        /// The first byte 0xE5 marks a free entry.
+        /// A free entry does not end the directory.
+        fn a_free_entry_is_skipped_but_does_not_end_the_directory() {
+            let mut data = Vec::new();
+            data.extend_from_slice(&raw_entry(b"FIRST   ", b"TXT", 0, 3, 1));
+            data.extend_from_slice(&raw_entry(b"\xE5ELETED ", b"TXT", 0, 4, 1));
+            data.extend_from_slice(&raw_entry(b"LAST    ", b"TXT", 0, 5, 1));
+            let dir = FATDirectory::new(data.into()).or_fail("new")?;
+
+            check_eq!(dir.len(), 3);
+            check!(dir[1].is_free());
+            check_eq!(dir[1].full_name(), None);
+            check_eq!(dir.iter().filter_map(|e| e.full_name()).count(), 2);
+            check_eq!(dir.find("LAST.TXT").or_fail("find")?.cluster(), 5);
+        }
+
+        fn long_file_name_needs_all_four_attribute_bits() {
+            check!(FATFileAttributes::from_bytes([0x0F]).long_file_name());
+            check!(FATFileAttributes::from_bytes([0x3F]).long_file_name());
+            for raw in [0x00, 0x07, 0x0B, 0x0D, 0x0E, 0x10] {
+                check!(!FATFileAttributes::from_bytes([raw]).long_file_name(), "raw {:#x}", raw);
+            }
+        }
+
+        fn fat_date_decodes_day_month_and_year() {
+            // Day bits 0-4, month bits 5-8, year bits 9-15
+            let raw: u16 = 15 | (6 << 5) | (44 << 9);
+            let date = FATDate::from_bytes(raw.to_le_bytes());
+            check_eq!(date.day(), 15);
+            check_eq!(date.month(), 6);
+            check_eq!(date.year(), 2024);
+        }
+
+        fn fat_time_decodes_seconds_minutes_and_hours() {
+            // 2-second count bits 0-4, minutes bits 5-10, hours bits 11-15
+            let raw: u16 = 10 | (34 << 5) | (13 << 11);
+            let time = FATTime::from_bytes(raw.to_le_bytes());
+            check_eq!(time.seconds(), 20);
+            check_eq!(time.minutes(), 34);
+            check_eq!(time.hours(), 13);
+        }
+
+        fn fat_time_set_seconds_rounds_down_and_rejects_too_large() {
+            let mut time = FATTime::new();
+            check!(time.set_seconds(21).is_ok());
+            check_eq!(time.seconds(), 20);
+            check!(time.set_seconds(64).is_err());
+        }
+
+        /// `FATDate::set_seconds` sets the year.
+        fn fat_date_set_seconds_sets_the_year() {
+            let mut date = FATDate::new();
+            check!(date.set_seconds(2107).is_ok());
+            check_eq!(date.year(), 2107);
+            check!(date.set_seconds(2108).is_err());
+        }
+
+        /// A year of 2236 does not fit in 7 bits, so the set gives `Err`.
+        /// Today the cast to `u8` drops the high bits, and the year becomes 1980.
+        #[known_bug(unfiled)]
+        fn fat_date_rejects_a_year_that_wraps_in_u8() {
+            let mut date = FATDate::new();
+            check!(date.set_seconds(2236).is_err());
+            check_eq!(date.year(), 1980);
+        }
+
+        /// A year before 1980 gives `Err`.
+        /// Today the subtraction overflows and the kernel panics.
+        #[known_bug(unfiled, crash)]
+        fn fat_date_rejects_a_year_before_1980() {
+            let mut date = FATDate::new();
+            check!(date.set_seconds(1979).is_err());
+        }
+
+        fn a_name_of_8_characters_with_no_extension_has_no_dot() {
+            let data = raw_entry(b"ABCDEFGH", b"   ", 0, 3, 1);
+            let dir = FATDirectory::new(Box::from(data)).or_fail("new")?;
+            check_eq!(dir[0].full_name().as_deref(), Some("ABCDEFGH"));
+        }
+
+        fn an_empty_directory_has_no_entries() {
+            let dir = FATDirectory::new(Box::from([0u8; 64])).or_fail("new")?;
+            check_eq!(dir.len(), 0);
+            check!(dir.find("").is_none());
+        }
+
+        /// An index past the last entry is a kernel bug, so the kernel panics.
+        #[should_panic("is out of bounds (3 entries)")]
+        fn an_index_past_the_end_panics() {
+            let dir = sample_dir();
+            let _ = &dir[3];
+        }
+    }
+}

@@ -179,3 +179,175 @@ pub struct FAT32EBR {
     reserved_2: [u8; 420],
     pub signature_word: u16,
 }
+
+/// The other FAT test modules use `Geometry` to build boot sectors.
+#[cfg(test)]
+pub(super) mod tests {
+    use super::*;
+    use crate::ktest::*;
+
+    /// The fields of a boot sector that the cases set
+    #[derive(Clone, Copy)]
+    pub struct Geometry {
+        pub bytes_per_sector: u16,
+        pub sectors_per_cluster: u8,
+        pub reserved: u16,
+        pub num_fats: u8,
+        pub root_entries: u16,
+        pub total_16: u16,
+        pub fat_size_16: u16,
+        pub total_32: u32,
+        pub fat_size_32: u32,
+        pub root_cluster: u32,
+        pub signature: u16,
+    }
+
+    impl Geometry {
+        /// A FAT32 volume with 98368 clusters of one sector
+        pub const FAT32: Self = Self {
+            bytes_per_sector: 512,
+            sectors_per_cluster: 1,
+            reserved: 32,
+            num_fats: 2,
+            root_entries: 0,
+            total_16: 0,
+            fat_size_16: 0,
+            total_32: 100_000,
+            fat_size_32: 800,
+            root_cluster: 2,
+            signature: MBR_SIGNATURE,
+        };
+
+        /// A legacy volume with `clusters` clusters of one sector.
+        /// It has 1 reserved sector, 1 FAT of `fat_size` sectors and 32 root
+        /// directory sectors.
+        pub fn legacy(clusters: u32, fat_size: u16) -> Self {
+            let total = 1 + fat_size as u32 + 32 + clusters;
+            let (total_16, total_32) = match u16::try_from(total) {
+                Ok(t) => (t, 0),
+                Err(_) => (0, total),
+            };
+            Self {
+                reserved: 1,
+                num_fats: 1,
+                root_entries: 512,
+                total_16,
+                fat_size_16: fat_size,
+                total_32,
+                fat_size_32: 0,
+                ..Self::FAT32
+            }
+        }
+
+        /// Gives the raw 512-byte sector. Field offsets follow the FAT
+        /// specification.
+        pub fn sector(&self) -> [u8; 512] {
+            let mut s = [0u8; 512];
+            s[0..3].copy_from_slice(&[0xEB, 0x58, 0x90]);
+            s[11..13].copy_from_slice(&self.bytes_per_sector.to_le_bytes());
+            s[13] = self.sectors_per_cluster;
+            s[14..16].copy_from_slice(&self.reserved.to_le_bytes());
+            s[16] = self.num_fats;
+            s[17..19].copy_from_slice(&self.root_entries.to_le_bytes());
+            s[19..21].copy_from_slice(&self.total_16.to_le_bytes());
+            // `FATMediaType` has two variants. Another byte is undefined
+            // behavior, so the cases use only 0xF8.
+            s[21] = 0xF8;
+            s[22..24].copy_from_slice(&self.fat_size_16.to_le_bytes());
+            s[32..36].copy_from_slice(&self.total_32.to_le_bytes());
+            s[36..40].copy_from_slice(&self.fat_size_32.to_le_bytes());
+            s[44..48].copy_from_slice(&self.root_cluster.to_le_bytes());
+            s[510..512].copy_from_slice(&self.signature.to_le_bytes());
+            s
+        }
+
+        pub fn record(&self) -> FATBootRecord {
+            FATBootRecord::new(&self.sector())
+        }
+    }
+
+    ktest! {
+        fn new_reads_each_field_from_its_offset() {
+            let g = Geometry { sectors_per_cluster: 4, root_cluster: 7, ..Geometry::FAT32 };
+            let br = g.record();
+            check_eq!({ br.bytes_per_sector }, 512);
+            check_eq!(br.sectors_per_cluster, 4);
+            check_eq!({ br.reserved_sector_count }, 32);
+            check_eq!(br.num_fats, 2);
+            check_eq!({ br.root_entry_count }, 0);
+            check_eq!(br.total_sectors(), 100_000);
+            // SAFETY: the case writes 0xF8, a valid `FATMediaType`.
+            let media = unsafe { core::ptr::addr_of!(br.media_type).cast::<u8>().read_unaligned() };
+            check_eq!(media, 0xF8);
+            check_eq!(br.fat_size(), 800);
+            match br.extended_boot_record() {
+                ExtendedBootRecord::Fat32(ebr) => check_eq!({ ebr.root_cluster }, 7),
+                ExtendedBootRecord::Legacy(_) => fail!("expected a FAT32 EBR"),
+            }
+        }
+
+        fn total_sectors_prefers_the_16_bit_field() {
+            let g = Geometry { total_16: 5000, total_32: 100_000, ..Geometry::FAT32 };
+            check_eq!(g.record().total_sectors(), 5000);
+            let g = Geometry { total_16: 0, total_32: 100_000, ..Geometry::FAT32 };
+            check_eq!(g.record().total_sectors(), 100_000);
+        }
+
+        fn fat_type_is_fat32_when_the_root_entry_count_is_0() {
+            // The 16-bit FAT size is not 0, so only the root entry count decides.
+            let g = Geometry { root_entries: 0, ..Geometry::legacy(100, 12) };
+            check_eq!(g.record().fat_type(), FATType::Fat32);
+        }
+
+        /// The limits come from the FAT specification.
+        fn fat_type_uses_the_cluster_count_limits() {
+            let cases = [
+                (4084, 12, FATType::Fat12),
+                (4085, 12, FATType::Fat16),
+                (65524, 256, FATType::Fat16),
+                (65525, 256, FATType::Fat32),
+            ];
+            for (clusters, fat_size, want) in cases {
+                let br = Geometry::legacy(clusters, fat_size).record();
+                check_eq!(br.cluster_count(), clusters);
+                check_eq!(br.fat_type(), want);
+            }
+        }
+
+        fn fat_size_reads_the_field_of_the_fat_type() {
+            check_eq!(Geometry::FAT32.record().fat_size(), 800);
+            let g = Geometry { fat_size_32: 999, ..Geometry::legacy(100, 12) };
+            check_eq!(g.record().fat_type(), FATType::Fat12);
+            check_eq!(g.record().fat_size(), 12);
+        }
+
+        /// Cluster 2 starts after the reserved sectors and the FATs.
+        fn cluster_2_starts_after_the_fats() {
+            check_eq!(Geometry::FAT32.record().cluster_start_sector(2), 32 + 2 * 800);
+        }
+
+        fn cluster_start_sector_uses_the_cluster_size() {
+            let br = Geometry { sectors_per_cluster: 8, ..Geometry::FAT32 }.record();
+            check_eq!(br.cluster_start_sector(2), 1632);
+            check_eq!(br.cluster_start_sector(5), 1632 + 3 * 8);
+        }
+
+        /// A legacy volume also has root directory sectors before cluster 2.
+        fn cluster_start_sector_skips_the_legacy_root_directory() {
+            let br = Geometry::legacy(100, 12).record();
+            check_eq!(br.cluster_start_sector(2), 1 + 12 + 32);
+        }
+
+        fn cluster_count_divides_by_the_cluster_size() {
+            let br = Geometry { sectors_per_cluster: 8, ..Geometry::FAT32 }.record();
+            check_eq!(br.cluster_count(), 98_368 / 8);
+        }
+
+        fn valid_signature_is_true_only_for_aa55() {
+            check!(Geometry::FAT32.record().valid_signature());
+            for signature in [0x0000, 0x55AA, 0xAA54, 0xFFFF] {
+                check!(!Geometry { signature, ..Geometry::FAT32 }.record().valid_signature());
+            }
+        }
+    }
+}
