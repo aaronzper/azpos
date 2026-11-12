@@ -44,3 +44,42 @@ pub fn set_logger(logger: FbTerminal) {
 pub fn logger_initialized() -> bool {
     LOGGER.lock().is_some()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ktest::*;
+    use crate::processes::{tests::spawn_test_program, PROCESSES};
+    use crate::scheduling::thread_yield;
+
+    /// The number of yields in each step of the case
+    const YIELDS: usize = 20;
+
+    ktest! {
+        /// A process can write to the log while a kernel thread holds the serial lock.
+        /// The process waits for the lock, and the kernel continues (GitHub #29).
+        /// Today the syscall holds `PROCESSES` with interrupts off, then blocks on `SERIAL`.
+        /// The kernel then panics with "Tried to yield with interrupts disabled".
+        #[known_bug(29, crash)]
+        fn a_process_waits_for_the_serial_lock() {
+            let pid = spawn_test_program("logloop").or_fail("spawn logloop")?;
+
+            // The process has its logger when it has the resource 0
+            let has_logger = wait_until(|| {
+                PROCESSES.lock().get_entry(pid).is_some_and(|p| p.resources.get_entry(0).is_some())
+            });
+            check!(has_logger, "the process did not get a logger");
+
+            // The case must not print while it holds the lock
+            let lock = SERIAL.lock();
+            for _ in 0..YIELDS {
+                thread_yield();
+            }
+            drop(lock);
+
+            for _ in 0..YIELDS {
+                thread_yield();
+            }
+        }
+    }
+}
