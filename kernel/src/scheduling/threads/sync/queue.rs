@@ -218,7 +218,7 @@ mod tests {
 
         /// An item that `push` overwrites is dropped.
         /// Today `set_index` writes over the old item and leaks it.
-        #[known_bug(unfiled)]
+        #[known_bug(67)]
         fn overwritten_item_is_dropped() {
             let oldest = Arc::new(());
             let buffer: Buffer<Arc<()>, 4> = Buffer::new();

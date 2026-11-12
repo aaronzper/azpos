@@ -113,7 +113,7 @@ mod tests {
 
         /// A thread that never runs drops its closure when the thread drops.
         /// Today `new_thread` leaks the box of the closure.
-        #[known_bug(unfiled)]
+        #[known_bug(67)]
         fn dropped_thread_drops_its_closure() {
             let shared = Arc::new(());
             let owned = Arc::clone(&shared);

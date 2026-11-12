@@ -56,7 +56,7 @@ mod tests {
     ktest! {
         /// Bit 0 is exec, bit 1 is write and bit 2 is read (ELF `PF_X`, `PF_W`, `PF_R`).
         /// Today `elfdefs.rs` swaps the values of the read and write bits.
-        #[known_bug(unfiled)]
+        #[known_bug(64)]
         fn from_elf_flags_reads_each_bit() {
             let x = UserMemoryFlags::from_elf_flags(0b001);
             check!(x.exec && !x.write && !x.read);

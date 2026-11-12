@@ -253,7 +253,7 @@ pub(crate) mod tests {
 
         /// The kernel runs only x86-64 code, so a 32-bit file is not valid.
         /// Today `spawn_proc` accepts the file. The process then faults, and the kernel panics.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(41, crash)]
         fn spawn_proc_of_a_32_bit_elf_gives_none() {
             check_rejected("32-bit", elf32_header())?;
         }
@@ -292,7 +292,7 @@ pub(crate) mod tests {
         /// Only `ET_EXEC` (2) is an executable.
         /// The code of the file yields in a loop, so a process that starts is harmless.
         /// Today `spawn_proc` tests one bit of `e_type`, so it accepts each type with bit 1 set.
-        #[known_bug(unfiled)]
+        #[known_bug(41)]
         fn spawn_proc_of_an_os_specific_type_gives_none() {
             check_rejected("e_type 6", elf_with_code(6, &yield_loop_code()))?;
             check_rejected("e_type 0xFE02", elf_with_code(0xFE02, &yield_loop_code()))?;
@@ -300,7 +300,7 @@ pub(crate) mod tests {
 
         /// A user program must not map kernel memory.
         /// Today `spawn_proc` accepts the file. Its thread then panics in `alloc_user_pages`.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(41, crash)]
         fn spawn_proc_of_a_segment_in_kernel_memory_gives_none() {
             let code = yield_loop_code();
             let mut segment = code_segment(&code);
@@ -310,7 +310,7 @@ pub(crate) mod tests {
 
         /// A segment with a file size above its memory size is not valid.
         /// Today `spawn_proc` accepts the file. Its thread then panics in the copy of the segment.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(41, crash)]
         fn spawn_proc_of_a_segment_with_filesz_above_memsz_gives_none() {
             let code = yield_loop_code();
             let mut segment = code_segment(&code);
@@ -336,7 +336,7 @@ pub(crate) mod tests {
 
         /// A new kernel thread can start 2 processes on its own stack of 16 KiB.
         /// Today the insert into `PROCESSES` overflows the stack, and the CPU gives a double fault.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(63, crash)]
         fn spawn_proc_of_a_second_process_fits_on_a_kernel_stack() {
             let count = Arc::new(spin::Mutex::new(0));
             let count_in_thread = Arc::clone(&count);

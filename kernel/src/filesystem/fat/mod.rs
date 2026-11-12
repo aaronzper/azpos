@@ -300,7 +300,7 @@ mod tests {
 
         /// An empty file has no cluster. `read_all` gives an empty buffer.
         /// Today it gives `None`, because cluster 0 is not a valid chain.
-        #[known_bug(unfiled)]
+        #[known_bug(68)]
         fn read_all_of_an_empty_file_gives_no_bytes() {
             let data = root_fs().read_all(&path("/tests/empty.txt")).or_fail("read_all")?;
             check_eq!(data.len(), 0);
@@ -308,7 +308,7 @@ mod tests {
 
         /// Today `FilePath::path_dirs` panics for a file in the root
         /// directory, so `read_all` panics too.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(71, crash)]
         fn read_all_reads_a_file_in_the_root_directory() {
             let data = root_fs().read_all(&path("/rootfile.txt")).or_fail("read_all")?;
             check_eq!(&*data, b"root");
@@ -352,7 +352,7 @@ mod tests {
 
         /// A directory is not a file, so `read_all` gives `None`.
         /// Today it gives `Some` with 0 bytes.
-        #[known_bug(unfiled)]
+        #[known_bug(68)]
         fn read_all_of_a_directory_gives_none() {
             let data = root_fs().read_all(&path("/tests/nested"));
             check!(data.is_none(), "got {:?}", data.map(|d| d.len()));
@@ -360,7 +360,7 @@ mod tests {
 
         /// A disk with no blocks has no boot sector, so `mount` gives `MountError`.
         /// Today `mount` unwraps the read error and panics.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(62, crash)]
         fn mount_of_an_empty_disk_gives_a_mount_error() {
             check!(mount_error(Vec::new()).is_some());
         }
@@ -385,7 +385,7 @@ mod tests {
 
         /// The boot sector puts the FAT past the end of the disk.
         /// Today `mount` unwraps the read error and panics.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(62, crash)]
         fn mount_with_a_fat_past_the_end_gives_a_mount_error() {
             let sector = Geometry::FAT32.sector();
             check!(mount_error(disk_with_boot_sector(sector, 1)).is_some());
@@ -410,7 +410,7 @@ mod tests {
 
         /// The size in the entry is longer than the chain, so the file is corrupt.
         /// Today `read_all` slices past the end of the data and panics.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(68, crash)]
         fn read_all_of_a_file_longer_than_its_chain_gives_none() {
             let mut disk = RamDisk::new(small_volume());
             let Ok(fs) = FATFilesystem::mount(&mut disk) else { fail!("mount failed") };
@@ -419,7 +419,7 @@ mod tests {
 
         /// A directory with an invalid first cluster is corrupt, so the result is `None`.
         /// Today `get_directory` panics with "Invalid cluster number".
-        #[known_bug(unfiled, crash)]
+        #[known_bug(68, crash)]
         fn dir_contents_of_a_directory_with_a_free_cluster_gives_none() {
             let mut disk = RamDisk::new(small_volume());
             let Ok(fs) = FATFilesystem::mount(&mut disk) else { fail!("mount failed") };
@@ -437,7 +437,7 @@ mod tests {
         /// The AHCI drive of the root partition reads more blocks than one command holds.
         /// One command holds `u16::MAX` blocks.
         /// Today the read calls `todo!("Multi-command read")`.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(60, crash)]
         fn the_root_drive_reads_more_than_one_command() {
             let drive = &root_fs().drive;
             let n = u16::MAX as usize + 1;

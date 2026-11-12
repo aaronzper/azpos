@@ -384,7 +384,7 @@ mod tests {
 
         /// A partition has the size of its MBR entry, not the size of the drive.
         /// Today `num_blocks` gives the sector count of the whole drive.
-        #[known_bug(unfiled)]
+        #[known_bug(61)]
         fn num_blocks_of_a_partition_is_its_size() {
             let device = spare_partition();
             let total = fat_total_sectors(device)?;
@@ -416,7 +416,7 @@ mod tests {
         /// A partition must not read past its end.
         /// Today `num_blocks` gives the size of the drive, so the index is past the end of the drive.
         /// The device does not check the index, and the read never ends.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(61, crash)]
         #[timeout(15)]
         fn read_at_num_blocks_gives_invalid_block() {
             let device = spare_partition();
@@ -425,7 +425,7 @@ mod tests {
 
         /// A read after the last sector of the partition gives `InvalidBlock`.
         /// Today the device does not check the index, so it reads the sector after the partition.
-        #[known_bug(unfiled)]
+        #[known_bug(61)]
         fn read_after_the_end_of_the_partition_gives_invalid_block() {
             let device = spare_partition();
             let total = fat_total_sectors(device)?;
@@ -445,7 +445,7 @@ mod tests {
         /// The last block of the partition keeps the data of a write.
         /// Today `num_blocks` gives the size of the drive, so the index is past the end of the drive.
         /// The write never ends.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(61, crash)]
         #[timeout(15)]
         fn write_then_read_of_the_last_block_gives_the_data() {
             let device = spare_partition();
