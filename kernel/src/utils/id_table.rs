@@ -101,7 +101,7 @@ mod tests {
 
         /// The ID counter wraps to 0 after the last ID and finds a free ID.
         /// Today `next_id += 1` overflows, which panics in a debug build.
-        #[known_bug(unfiled, crash)]
+        #[known_bug(72, crash)]
         fn the_id_counter_wraps_to_a_free_id() {
             let mut table: IDTable<u8, u8> = IDTable::new();
             for i in 0..=254 {
