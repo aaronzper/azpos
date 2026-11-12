@@ -47,3 +47,33 @@ pub fn alloc_user_pages(pages: PageRangeInclusive, flags: UserMemoryFlags) {
         page_alloc.alloc_page(page, page_flags);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ktest::*;
+
+    ktest! {
+        /// Bit 0 is exec, bit 1 is write and bit 2 is read (ELF `PF_X`, `PF_W`, `PF_R`).
+        /// Today `elfdefs.rs` swaps the values of the read and write bits.
+        #[known_bug(unfiled)]
+        fn from_elf_flags_reads_each_bit() {
+            let x = UserMemoryFlags::from_elf_flags(0b001);
+            check!(x.exec && !x.write && !x.read);
+            let w = UserMemoryFlags::from_elf_flags(0b010);
+            check!(!w.exec && w.write && !w.read);
+            let r = UserMemoryFlags::from_elf_flags(0b100);
+            check!(!r.exec && !r.write && r.read);
+        }
+
+        /// No bit gives no permission. All bits give all permissions.
+        fn from_elf_flags_of_none_and_all() {
+            let none = UserMemoryFlags::from_elf_flags(0);
+            check!(!none.exec && !none.write && !none.read);
+            let all = UserMemoryFlags::from_elf_flags(0b111);
+            check!(all.exec && all.write && all.read);
+            let high = UserMemoryFlags::from_elf_flags(0xFFFF_FFF8);
+            check!(!high.exec && !high.write && !high.read, "other bits are ignored");
+        }
+    }
+}

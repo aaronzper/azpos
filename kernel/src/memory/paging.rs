@@ -340,3 +340,178 @@ pub unsafe fn downsize_pages(start_va: VirtAddr, len: u64) {
 
     x86_64::instructions::tlb::flush_all();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::boxed::Box;
+    use crate::ktest::*;
+
+    fn region(start: u64, end: u64) -> MemoryRegion {
+        MemoryRegion { start, end, kind: MemoryRegionKind::Usable }
+    }
+
+    fn frame_count(start: u64, end: u64) -> usize {
+        get_frames_from_region(&region(start, end)).map_or(0, |r| r.count())
+    }
+
+    ktest! {
+        /// An aligned region gives each frame in it.
+        fn aligned_region_gives_each_frame() {
+            let frames = get_frames_from_region(&region(0x1000, 0x4000))
+                .or_fail("get_frames_from_region")?;
+            check_eq!(frames.start.start_address().as_u64(), 0x1000);
+            check_eq!(frames.end.start_address().as_u64(), 0x3000);
+            check_eq!(frames.count(), 3);
+        }
+
+        /// An unaligned start rounds up. An unaligned end rounds down.
+        fn unaligned_region_rounds_to_full_frames() {
+            let frames = get_frames_from_region(&region(0x1001, 0x4FFF))
+                .or_fail("get_frames_from_region")?;
+            check_eq!(frames.start.start_address().as_u64(), 0x2000);
+            check_eq!(frames.end.start_address().as_u64(), 0x3000);
+            check_eq!(frames.count(), 2);
+        }
+
+        /// A region inside one page contains no full frame.
+        fn region_inside_one_page_gives_no_frame() {
+            check_eq!(frame_count(0x1100, 0x1F00), 0);
+            check_eq!(frame_count(0x1100, 0x2000), 0);
+            check_eq!(frame_count(0x1000, 0x1000), 0);
+        }
+
+        /// The rustdoc says that a region with no full frame gives `None`.
+        /// Today a start that rounds past the end gives `Some` of an empty range.
+        #[known_bug(unfiled)]
+        fn region_inside_one_page_gives_none() {
+            check!(get_frames_from_region(&region(0x1000, 0x1000)).is_none());
+            check!(get_frames_from_region(&region(0x1100, 0x1F00)).is_none());
+        }
+
+        /// `frame_to_index` and `index_to_frame` are inverse.
+        fn frame_index_conversions_are_inverse() {
+            for i in [0, 1, 255, 0x12345] {
+                check_eq!(frame_to_index(index_to_frame(i)), i);
+            }
+            let frame = PhysFrame::containing_address(PhysAddr::new(0x7000));
+            check_eq!(index_to_frame(frame_to_index(frame)), frame);
+        }
+
+        /// The statistics never show more free bytes than total bytes.
+        fn avail_bytes_is_at_most_total_bytes() {
+            let stats = PAGE_ALLOCATOR.lock().as_ref().or_fail("allocator")?.get_stats();
+            check!(stats.avail_bytes <= stats.total_bytes, "{:?}", stats);
+            check!(stats.avail_bytes > 0);
+        }
+
+        /// `allocate_frame` takes one page. `dealloc_frame` gives it back.
+        fn allocate_and_dealloc_frame_change_avail_bytes_by_one_page() {
+            let mut lock = PAGE_ALLOCATOR.lock();
+            let alloc = lock.as_mut().or_fail("allocator")?;
+            let before = alloc.get_stats().avail_bytes;
+            let frame = alloc.allocate_frame().or_fail("allocate_frame")?;
+            let after_alloc = alloc.get_stats().avail_bytes;
+            drop(lock);
+
+            dealloc_frame(frame);
+            let after_free = PAGE_ALLOCATOR.lock().as_ref().or_fail("allocator")?
+                .get_stats().avail_bytes;
+
+            check_eq!(after_alloc, before - PAGE_SIZE as usize);
+            check_eq!(after_free, before);
+        }
+
+        /// Two calls of `allocate_frame` give two different frames.
+        fn two_allocations_give_two_frames() {
+            let mut lock = PAGE_ALLOCATOR.lock();
+            let alloc = lock.as_mut().or_fail("allocator")?;
+            let a = alloc.allocate_frame().or_fail("first allocate_frame")?;
+            let b = alloc.allocate_frame().or_fail("second allocate_frame")?;
+            unsafe {
+                alloc.deallocate_frame(a);
+                alloc.deallocate_frame(b);
+            }
+            check_ne!(a, b);
+        }
+
+        /// `alloc_range(4)` gives 4 frames in a row and marks each one as used.
+        fn alloc_range_gives_contiguous_frames() {
+            let mut lock = PAGE_ALLOCATOR.lock();
+            let alloc = lock.as_mut().or_fail("allocator")?;
+            let before = alloc.get_stats().avail_bytes;
+            let range = alloc.alloc_range(4).or_fail("alloc_range")?;
+            let after = alloc.get_stats().avail_bytes;
+            let all_used = range.into_iter()
+                .all(|f| alloc.frame_refcounts[frame_to_index(f)] == 1);
+            for frame in range {
+                unsafe { alloc.deallocate_frame(frame); }
+            }
+            let restored = alloc.get_stats().avail_bytes;
+
+            check_eq!(range.count(), 4);
+            check!(all_used);
+            check_eq!(after, before - 4 * PAGE_SIZE as usize);
+            check_eq!(restored, before);
+        }
+
+        /// A range longer than physical memory gives `None`.
+        fn alloc_range_longer_than_memory_gives_none() {
+            let mut lock = PAGE_ALLOCATOR.lock();
+            let alloc = lock.as_mut().or_fail("allocator")?;
+            let n = alloc.frame_refcounts.len() + 1;
+            check!(alloc.alloc_range(n).is_none());
+        }
+
+        /// `alloc_page` of a mapped page keeps the frame and takes no memory.
+        fn alloc_page_of_a_mapped_page_keeps_the_frame() {
+            let boxed = Box::new(0u64);
+            let page = SizedPage::containing_address(VirtAddr::from_ptr(&*boxed));
+            let before = current_pt().translate_page(page).ok().or_fail("translate")?;
+
+            let mut lock = PAGE_ALLOCATOR.lock();
+            let alloc = lock.as_mut().or_fail("allocator")?;
+            let avail_before = alloc.get_stats().avail_bytes;
+            alloc.alloc_page(page, PageTableFlags::PRESENT | PageTableFlags::WRITABLE);
+            let avail_after = alloc.get_stats().avail_bytes;
+            drop(lock);
+
+            let after = current_pt().translate_page(page).ok().or_fail("translate")?;
+            check_eq!(after, before);
+            check_eq!(avail_after, avail_before);
+        }
+
+        /// A second free of one frame is a kernel error.
+        #[should_panic("Physical frame double free")]
+        fn double_dealloc_frame_panics() {
+            let frame = PAGE_ALLOCATOR.lock().as_mut().or_fail("allocator")?
+                .allocate_frame().or_fail("allocate_frame")?;
+            dealloc_frame(frame);
+            dealloc_frame(frame);
+        }
+
+        /// A freed frame is free for the next allocation.
+        /// Today `next_alloc` stays above it, so the allocator skips it.
+        #[known_bug(unfiled)]
+        fn freed_frame_can_be_allocated_again() {
+            let mut lock = PAGE_ALLOCATOR.lock();
+            let alloc = lock.as_mut().or_fail("allocator")?;
+            let frame = alloc.allocate_frame().or_fail("allocate_frame")?;
+            unsafe { alloc.deallocate_frame(frame); }
+            let next_alloc = alloc.next_alloc;
+            check!(next_alloc <= frame_to_index(frame),
+                "next_alloc {} is above the freed index {}",
+                next_alloc, frame_to_index(frame));
+        }
+
+        /// `alloc_range(0)` gives `None` or an empty range.
+        /// Today `windows(0)` panics.
+        #[known_bug(unfiled, crash)]
+        fn alloc_range_of_zero_frames_is_empty() {
+            let mut lock = PAGE_ALLOCATOR.lock();
+            let alloc = lock.as_mut().or_fail("allocator")?;
+            let range = alloc.alloc_range(0);
+            check!(range.map_or(true, |r| r.is_empty()));
+        }
+    }
+}

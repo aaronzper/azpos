@@ -93,3 +93,54 @@ pub fn result_to_rax(result: ResourceResult) -> i64 {
         Err(ResourceError::Misc(c)) => c,
     }
 }
+
+/// Host tests: `cargo test -p libsci`.
+///
+/// A test for a known bug asserts the correct behavior and has
+/// `#[should_panic]`. Remove the attribute in the change that fixes the bug.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_success_value_survives_the_round_trip() {
+        for value in [0, 1, 4096, i64::MAX] {
+            assert_eq!(result_to_rax(Ok(value)), value);
+            assert!(matches!(rax_to_result(value), Ok(v) if v == value));
+        }
+    }
+
+    #[test]
+    fn each_standard_error_has_its_documented_code() {
+        assert_eq!(result_to_rax(Err(ResourceError::ResourceNotFound)), -1);
+        assert_eq!(result_to_rax(Err(ResourceError::Unsupported)), -2);
+        assert_eq!(result_to_rax(Err(ResourceError::InvalidInput)), -3);
+    }
+
+    #[test]
+    fn not_found_and_unsupported_survive_the_round_trip() {
+        assert!(matches!(rax_to_result(-1), Err(ResourceError::ResourceNotFound)));
+        assert!(matches!(rax_to_result(-2), Err(ResourceError::Unsupported)));
+    }
+
+    #[test]
+    fn a_misc_code_survives_the_round_trip() {
+        for code in [-0x10000, -0x12345, i64::MIN] {
+            assert_eq!(result_to_rax(Err(ResourceError::Misc(code))), code);
+            assert!(matches!(rax_to_result(code), Err(ResourceError::Misc(c)) if c == code));
+        }
+    }
+
+    // Known bug #34: `rax_to_result` has no arm for -3 and panics.
+    #[test]
+    #[should_panic(expected = "Invalid resource syscall return value")]
+    fn invalid_input_survives_the_round_trip() {
+        assert!(matches!(rax_to_result(-3), Err(ResourceError::InvalidInput)));
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid resource syscall return value")]
+    fn a_reserved_error_code_panics() {
+        let _ = rax_to_result(-0xFFFF);
+    }
+}

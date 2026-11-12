@@ -281,3 +281,109 @@ pub unsafe fn thread_exit() -> ! {
     thread_yield();
     panic!("Returned after exit");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::sync::Arc;
+    use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use crate::{interrupts::{disable_interrupts, enable_interrupts}, ktest::*};
+
+    ktest! {
+        /// A test thread is a running kernel thread with no process.
+        fn test_thread_is_running_and_has_no_process() {
+            let sched = SCHEDULER.lock();
+            let running = sched.currently_running();
+            let proc = sched.current_proc();
+            drop(sched);
+            check!(running.is_some());
+            check!(proc.is_none());
+        }
+
+        /// A thread that returns leaves the thread table.
+        fn returned_thread_leaves_the_thread_table() {
+            let done = Arc::new(AtomicBool::new(false));
+            let flag = Arc::clone(&done);
+            let tid = spawn_thread(move || flag.store(true, Ordering::SeqCst));
+            check!(wait_until(|| done.load(Ordering::SeqCst)), "the thread did not run");
+            check!(wait_until(|| SCHEDULER.lock().get_thread(tid).is_none()));
+        }
+
+        /// A thread drops its closure when it ends.
+        fn thread_drops_its_closure() {
+            let shared = Arc::new(());
+            let owned = Arc::clone(&shared);
+            let done = Arc::new(AtomicBool::new(false));
+            let flag = Arc::clone(&done);
+            spawn_thread(move || {
+                let _keep = &owned;
+                flag.store(true, Ordering::SeqCst);
+            });
+            check!(wait_until(|| done.load(Ordering::SeqCst)), "the thread did not run");
+            check!(wait_until(|| Arc::strong_count(&shared) == 1),
+                "strong count {}", Arc::strong_count(&shared));
+        }
+
+        /// Four threads that each yield 50 times all complete.
+        fn four_yielding_threads_all_complete() {
+            let finished = Arc::new(AtomicUsize::new(0));
+            for _ in 0..4 {
+                let count = Arc::clone(&finished);
+                spawn_thread(move || {
+                    for _ in 0..50 {
+                        thread_yield();
+                    }
+                    count.fetch_add(1, Ordering::SeqCst);
+                });
+            }
+            check!(wait_until(|| finished.load(Ordering::SeqCst) == 4),
+                "{} of 4 threads complete", finished.load(Ordering::SeqCst));
+        }
+
+        /// A blocked thread runs only after its `BlockedThread` drops.
+        fn blocked_thread_runs_after_unblock() {
+            let ran = Arc::new(AtomicBool::new(false));
+            let flag = Arc::clone(&ran);
+            let thread = Thread::new_thread(move || flag.store(true, Ordering::SeqCst), None);
+            let block = {
+                let mut sched = SCHEDULER.lock();
+                let tid = sched.add_thread(thread);
+                sched.block_thread(tid)
+            };
+            for _ in 0..20 {
+                thread_yield();
+            }
+            let ran_while_blocked = ran.load(Ordering::SeqCst);
+            drop(block);
+            let ran_after = wait_until(|| ran.load(Ordering::SeqCst));
+            check!(!ran_while_blocked);
+            check!(ran_after);
+        }
+
+        /// The drop of a `BlockedThread` for an unknown thread changes nothing.
+        fn unblock_of_an_unknown_thread_is_ignored() {
+            drop(BlockedThread { thread: ThreadID::MAX });
+            check!(!SCHEDULER.lock().runnable.contains(&ThreadID::MAX));
+        }
+
+        /// `kill_thread` of an unknown thread ID gives `None`.
+        fn kill_of_an_unknown_thread_gives_none() {
+            let result = unsafe { SCHEDULER.lock().kill_thread(ThreadID::MAX) };
+            check!(result.is_none());
+        }
+
+        /// `block_thread` of a thread that is not runnable is a kernel error.
+        #[should_panic("isn't currently runnable")]
+        fn block_of_a_thread_that_is_not_runnable_panics() {
+            let _ = SCHEDULER.lock().block_thread(ThreadID::MAX);
+        }
+
+        /// A yield with interrupts off is a kernel error.
+        #[should_panic("Tried to yield with interrupts disabled")]
+        fn yield_with_interrupts_off_panics() {
+            disable_interrupts();
+            thread_yield();
+            enable_interrupts();
+        }
+    }
+}

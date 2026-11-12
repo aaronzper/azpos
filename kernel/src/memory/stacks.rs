@@ -168,3 +168,100 @@ impl Drop for KThreadStack {
         KERNEL_STACK_ALLOCATOR.lock().free_stack(self.index);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::hint::black_box;
+    use crate::{ktest::*, memory::resolve_virt_addr};
+
+    /// The number of bytes of one stack, with the guard page
+    const STACK_BYTES: u64 = (KERNEL_STACK_SIZE as u64 + 1) * PAGE_SIZE;
+
+    fn new_stack() -> Option<KThreadStack> {
+        KERNEL_STACK_ALLOCATOR.lock().alloc_stack()
+    }
+
+    fn stacks_in_use() -> usize {
+        KERNEL_STACK_ALLOCATOR.lock().stacks.count_ones()
+    }
+
+    /// Calls itself with a 1 KiB local array until the stack overflows.
+    fn recurse(depth: u64) -> u64 {
+        let mut local = [0u8; 1024];
+        local[0] = depth as u8;
+        black_box(&mut local);
+        recurse(depth + 1) + local[0] as u64
+    }
+
+    ktest! {
+        /// Each page of a new stack is mapped and writable.
+        fn new_stack_is_mapped_and_writable() {
+            let stack = new_stack().or_fail("alloc_stack")?;
+            let top = stack.top().as_u64();
+            check_eq!(top % PAGE_SIZE, 0);
+            for i in 1..=KERNEL_STACK_SIZE as u64 {
+                let addr = top - i * PAGE_SIZE;
+                check!(resolve_virt_addr(VirtAddr::new(addr)).is_some(), "{:#x}", addr);
+                let ptr = addr as *mut u64;
+                let value = unsafe {
+                    ptr.write_volatile(0x1234_5678);
+                    ptr.read_volatile()
+                };
+                check_eq!(value, 0x1234_5678);
+            }
+        }
+
+        /// The page below the stack is a guard page with no mapping.
+        fn guard_page_below_the_stack_is_not_mapped() {
+            let stack = new_stack().or_fail("alloc_stack")?;
+            let guard = stack.top().as_u64() - STACK_BYTES;
+            check!(resolve_virt_addr(VirtAddr::new(guard)).is_none());
+            check!(STACKS_BOTTOM.load(Ordering::SeqCst) <= guard);
+        }
+
+        /// Two stacks do not overlap.
+        fn two_stacks_do_not_overlap() {
+            let a = new_stack().or_fail("first alloc_stack")?;
+            let b = new_stack().or_fail("second alloc_stack")?;
+            let (a_top, b_top) = (a.top().as_u64(), b.top().as_u64());
+            check!(a_top <= b_top - STACK_BYTES || b_top <= a_top - STACK_BYTES,
+                "tops {:#x} and {:#x}", a_top, b_top);
+        }
+
+        /// A dropped stack frees its index. The next stack gets the same top.
+        fn dropped_stack_is_used_again() {
+            let first = new_stack().or_fail("first alloc_stack")?;
+            let top = first.top();
+            drop(first);
+            let second = new_stack().or_fail("second alloc_stack")?;
+            check_eq!(second.top(), top);
+        }
+
+        /// A thread that returns frees its kernel stack.
+        fn ended_threads_free_their_stacks() {
+            let before = stacks_in_use();
+            for _ in 0..8 {
+                run_in_thread(|| {});
+            }
+            check!(wait_until(|| stacks_in_use() <= before),
+                "{} stacks before, {} after", before, stacks_in_use());
+        }
+
+        /// A second free of one stack is a kernel error.
+        #[should_panic("Stack double free!")]
+        fn double_free_of_a_stack_panics() {
+            let stack = new_stack().or_fail("alloc_stack")?;
+            let index = stack.index;
+            drop(stack);
+            KERNEL_STACK_ALLOCATOR.lock().free_stack(index);
+        }
+
+        /// A stack overflow hits the guard page and gives a double fault.
+        /// The page fault has no handler, so the CPU escalates it.
+        #[should_panic("Double Fault")]
+        fn stack_overflow_gives_a_double_fault() {
+            run_in_thread(|| { black_box(recurse(0)); });
+        }
+    }
+}

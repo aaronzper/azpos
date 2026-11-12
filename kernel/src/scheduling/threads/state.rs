@@ -62,3 +62,32 @@ impl CpuState {
         self.int_stack.instruction_pointer.as_u64() <= USER_END_ADDR
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ktest::*;
+
+    ktest! {
+        /// `new` sets the stack, the entry, the argument and the interrupt flag.
+        fn new_state_sets_entry_stack_and_argument() {
+            let stack = VirtAddr::new(0xFFFF_FF00_0000_0000);
+            let entry = VirtAddr::new(0xFFFF_8000_0010_0000);
+            let state = CpuState::new(stack, entry, 42);
+            check_eq!(state.rdi, 42);
+            check_eq!(state.rax, 0);
+            check_eq!(state.int_stack.instruction_pointer, entry);
+            check_eq!(state.int_stack.stack_pointer, stack);
+            check!(state.int_stack.cpu_flags.contains(RFlags::INTERRUPT_FLAG));
+        }
+
+        /// A low instruction pointer is user code. A high one is kernel code.
+        fn is_user_follows_the_instruction_pointer() {
+            let stack = VirtAddr::new(0x1000);
+            let user = CpuState::new(stack, VirtAddr::new(0x40_0000), 0);
+            let kernel = CpuState::new(stack, VirtAddr::new(0xFFFF_8000_0000_0000), 0);
+            check!(user.is_user());
+            check!(!kernel.is_user());
+        }
+    }
+}
