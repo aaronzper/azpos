@@ -1,0 +1,9 @@
+[package]
+name = "systest"
+description = "User test program. It runs the test cases of the syscall API and reports each result on the kernel log."
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+libsystem = { path = "../../libraries/libsystem" }
+libtestkit = { path = "../../libraries/libtestkit" }
