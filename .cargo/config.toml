@@ -8,3 +8,11 @@ rustflags = [
   "-C", "relocation-model=static",
   "-C", "code-model=large",
 ]
+
+[alias]
+# Kernel suite, then user suite, on the test kernel
+ktest = "test -p azpos --test ktest --"
+# User suite on the production kernel
+e2e = "test -p azpos --test e2e --"
+# Each test in the repo: host unit tests, ktest and e2e
+test-all = "test -p libtestkit -p libsci -p azpos"

@@ -1,3 +1,5 @@
+use azpos::qemu;
+
 fn main() {
     let args: String = std::env::args().collect();
 
@@ -11,10 +13,7 @@ fn main() {
     // whether to run QEMU with GDB
     let gdb = args.contains("-gdb");
 
-    let mut cmd = std::process::Command::new("qemu-system-x86_64");
-    cmd.arg("-m").arg("2G");
-    cmd.arg("-M").arg("q35");
-    cmd.arg("-serial").arg("stdio");
+    let mut cmd = qemu::base_command();
 
     let path = if uefi {
         cmd.arg("-bios").arg(ovmf_prebuilt::ovmf_pure_efi());
