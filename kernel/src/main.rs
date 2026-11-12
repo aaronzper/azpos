@@ -4,17 +4,20 @@
 #![feature(abi_x86_interrupt)]
 #![feature(ascii_char)]
 #![allow(dead_code)]
+#![cfg_attr(test, feature(custom_test_frameworks))]
+#![cfg_attr(test, test_runner(crate::ktest::run))]
+#![cfg_attr(test, reexport_test_harness_main = "ktest_main")]
 
 extern crate alloc;
 
-use alloc::string::ToString;
+use alloc::{boxed::Box, string::ToString};
 use bootloader_api::{config::Mapping, info::Optional, BootInfo, BootloaderConfig};
 use devices::{fb::{FbTerminal, Framebuffer}, init_devices, keyboard::keyboard_listener, pci::{PCIController, PCIDeviceClass}, storage::{ahci::{AHCIController, SATA_PCI_SUBCLASS}, BlockDevice}, DEVICE_MANAGER};
 use filesystem::{fat::FATFilesystem, FilePath, FileSystem};
 use interrupts::init_interrupts;
 use logger::set_logger;
 use memory::{init_memory, KERNEL_START_ADDR};
-use processes::{spawn_proc, syscalls::init_syscalls};
+use processes::{spawn_proc, syscalls::init_syscalls, ProcessID};
 use scheduling::{thread_yield, threads::Thread, SCHEDULER};
 
 #[macro_use]
@@ -36,6 +39,9 @@ mod interrupts;
 mod scheduling;
 /// Userspace processes subsystem (procs, their resources, syscalls, etc)
 mod processes;
+/// Kernel test harness. Exists only in a test build (`cargo test`).
+#[cfg(test)]
+mod ktest;
 
 const BOOTCONFIG: BootloaderConfig = {
     let mut conf = BootloaderConfig::new_default();
@@ -63,25 +69,11 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
 
     let mut sched_lock = SCHEDULER.lock();
     sched_lock.add_thread(Thread::new_thread(keyboard_listener, None));
-    sched_lock.add_thread(Thread::new_thread(|| {
-        let pci = PCIController::new();
-        let ahci_pci = pci.devices().iter()
-            .find(|x| {
-                let (c, sc) = x.class();
-                c == PCIDeviceClass::MassStorageCtrl && sc == SATA_PCI_SUBCLASS
-            })
-        .expect("No PCI storage device");
-        let mut ahci = AHCIController::new(ahci_pci).unwrap();
-
-        let device = ahci.devices()[0].take_device().unwrap();
-        let part = &mut device.partition().unwrap()[2];
-
-        let fs = FATFilesystem::mount(part.as_mut()).unwrap();
-        let exe = FilePath::new("/programs/adam.exe".to_string()).unwrap();
-        let elf_data = fs.read_all(&exe).unwrap();
-
-        let adam = spawn_proc("adam".to_string(), elf_data.clone()).unwrap();
-    }, None));
+    // A test build runs the kernel tests in place of the init process
+    #[cfg(not(test))]
+    sched_lock.add_thread(Thread::new_thread(start_init, None));
+    #[cfg(test)]
+    sched_lock.add_thread(Thread::new_thread(ktest::main_thread, None));
 
     drop(sched_lock); // Drop so not locked forever
 
@@ -95,4 +87,37 @@ fn kmain(boot_info: &'static mut BootInfo) -> ! {
     thread_yield();
 
     panic!("Scheduler yield returned -- this shouldn't happen!");
+}
+
+/// Finds the first SATA drive and mounts its root partition.
+///
+/// The drive and the file system stay alive until shutdown.
+fn mount_root_fs() -> FATFilesystem<'static> {
+    let pci = PCIController::new();
+    let ahci_pci = pci.devices().iter()
+        .find(|x| {
+            let (c, sc) = x.class();
+            c == PCIDeviceClass::MassStorageCtrl && sc == SATA_PCI_SUBCLASS
+        })
+    .expect("No PCI storage device");
+    let ahci = Box::leak(Box::new(AHCIController::new(ahci_pci).unwrap()));
+
+    let device = ahci.devices()[0].take_device().unwrap();
+    let partitions = Box::leak(device.partition().unwrap());
+
+    FATFilesystem::mount(partitions[2].as_mut()).unwrap()
+}
+
+/// Loads the program at `path` in `fs` and starts it as a process
+fn spawn_from_fs(fs: &FATFilesystem, path: &str, name: &str) -> ProcessID {
+    let exe = FilePath::new(path.to_string()).unwrap();
+    let elf_data = fs.read_all(&exe).expect("Program file not found");
+
+    spawn_proc(name.to_string(), elf_data).expect("Invalid ELF file")
+}
+
+/// Mounts the root file system and starts the init process
+fn start_init() {
+    let fs = mount_root_fs();
+    spawn_from_fs(&fs, "/programs/adam.exe", "adam");
 }

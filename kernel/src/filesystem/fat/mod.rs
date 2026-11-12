@@ -157,3 +157,83 @@ impl<'a> FileSystem<'a> for FATFilesystem<'a> {
         Some(data.into())
     }
 }
+
+/// These cases read the test disk. The host harness creates the files, see
+/// `azpos::fixtures` in the root package.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ktest::*;
+    use alloc::string::ToString;
+
+    fn path(raw: &str) -> FilePath {
+        FilePath::new(raw.to_string()).unwrap()
+    }
+
+    ktest! {
+        fn the_test_disk_is_fat32() {
+            check_eq!(root_fs().boot_record.fat_type(), FATType::Fat32);
+        }
+
+        fn read_all_gives_the_contents_of_a_small_file() {
+            let data = root_fs().read_all(&path("/tests/hello.txt")).or_fail("read_all")?;
+            check_eq!(&*data, b"Hello from the test disk!\n");
+        }
+
+        /// The file is longer than one cluster. Byte `i` has the value
+        /// `i % 251`.
+        fn read_all_follows_the_cluster_chain() {
+            let data = root_fs().read_all(&path("/tests/pattern.bin")).or_fail("read_all")?;
+            check_eq!(data.len(), 10_000);
+
+            let first_bad = data.iter().enumerate().find(|(i, b)| **b != (*i % 251) as u8);
+            check_eq!(first_bad, None);
+        }
+
+        fn read_all_finds_a_file_in_nested_directories() {
+            let data = root_fs().read_all(&path("/tests/nested/deep/leaf.txt")).or_fail("read_all")?;
+            check_eq!(&*data, b"leaf");
+        }
+
+        fn the_file_name_ignores_case() {
+            check!(root_fs().read_all(&path("/TESTS/Hello.TXT")).is_some());
+        }
+
+        fn read_all_of_a_missing_path_gives_none() {
+            check!(root_fs().read_all(&path("/tests/missing.txt")).is_none());
+            check!(root_fs().read_all(&path("/missing/hello.txt")).is_none());
+            // A file is not a directory
+            check!(root_fs().read_all(&path("/tests/hello.txt/x")).is_none());
+        }
+
+        fn dir_contents_lists_files_and_directories() {
+            let entries = root_fs().dir_contents(&path("/tests")).or_fail("dir_contents")?;
+
+            let hello = entries.iter().find(|e| e.filename == "HELLO.TXT").or_fail("HELLO.TXT")?;
+            check!(!hello.is_directory);
+            let nested = entries.iter().find(|e| e.filename == "NESTED").or_fail("NESTED")?;
+            check!(nested.is_directory);
+        }
+
+        fn dir_contents_of_a_file_or_a_missing_path_gives_none() {
+            check!(root_fs().dir_contents(&path("/tests/hello.txt")).is_none());
+            check!(root_fs().dir_contents(&path("/missing")).is_none());
+        }
+
+        /// An empty file has no cluster. `read_all` gives an empty buffer.
+        /// Today it gives `None`, because cluster 0 is not a valid chain.
+        #[known_bug(68)]
+        fn read_all_of_an_empty_file_gives_no_bytes() {
+            let data = root_fs().read_all(&path("/tests/empty.txt")).or_fail("read_all")?;
+            check_eq!(data.len(), 0);
+        }
+
+        /// Today `FilePath::path_dirs` panics for a file in the root
+        /// directory, so `read_all` panics too.
+        #[known_bug(71, crash)]
+        fn read_all_reads_a_file_in_the_root_directory() {
+            let data = root_fs().read_all(&path("/rootfile.txt")).or_fail("read_all")?;
+            check_eq!(&*data, b"root");
+        }
+    }
+}

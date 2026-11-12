@@ -80,3 +80,60 @@ impl FilePath {
         self.raw_path.ends_with("/")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ktest::*;
+    use alloc::{string::ToString, vec::Vec};
+
+    fn path(raw: &str) -> Option<FilePath> {
+        FilePath::new(raw.to_string())
+    }
+
+    ktest! {
+        fn new_accepts_only_an_absolute_path() {
+            check!(path("/").is_some());
+            check!(path("/programs/adam.exe").is_some());
+            check!(path("programs/adam.exe").is_none());
+            check!(path("").is_none());
+        }
+
+        fn as_parts_gives_each_component() {
+            let p = path("/programs/tools/adam.exe").or_fail("new")?;
+            let parts: Vec<&str> = p.as_parts().collect();
+            check_eq!(parts, ["programs", "tools", "adam.exe"]);
+
+            let root = path("/").or_fail("new")?;
+            check_eq!(root.as_parts().count(), 0);
+        }
+
+        fn filename_is_the_last_component() {
+            check_eq!(path("/programs/adam.exe").or_fail("new")?.filename(), "adam.exe");
+            check_eq!(path("/programs/").or_fail("new")?.filename(), "programs");
+            check_eq!(path("/").or_fail("new")?.filename(), "/");
+        }
+
+        fn a_final_slash_means_directory() {
+            check!(path("/programs/").or_fail("new")?.must_be_dir());
+            check!(path("/").or_fail("new")?.must_be_dir());
+            check!(!path("/programs").or_fail("new")?.must_be_dir());
+        }
+
+        fn path_dirs_removes_the_filename() {
+            let p = path("/programs/tools/adam.exe").or_fail("new")?;
+            check_eq!(p.path_dirs().as_str(), "/programs/tools");
+
+            let dir = path("/programs/tools/").or_fail("new")?;
+            check_eq!(dir.path_dirs().as_str(), "/programs/tools/");
+        }
+
+        /// The directory of a file in the root directory is `/`. Today
+        /// `path_dirs` builds an empty path and panics on the `unwrap`.
+        #[known_bug(71, crash)]
+        fn path_dirs_of_a_root_file_is_the_root() {
+            let p = path("/adam.exe").or_fail("new")?;
+            check_eq!(p.path_dirs().as_str(), "/");
+        }
+    }
+}
