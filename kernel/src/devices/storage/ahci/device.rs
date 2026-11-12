@@ -343,3 +343,139 @@ impl BlockDevice for AHCIDevice {
         Some(partitions.into_boxed_slice())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ktest::*;
+
+    /// Returns the total sector count in the FAT boot record of `device`.
+    /// The image tools format the whole partition, so this is the size of the partition.
+    fn fat_total_sectors(device: &dyn BlockDevice) -> Result<usize, libtestkit::Failure> {
+        let sector = device.read_blocks(0, 1).or_fail("read the boot record")?;
+        let small = u16::from_le_bytes([sector[0x13], sector[0x14]]) as usize;
+        let large = u32::from_le_bytes(sector[0x20..0x24].try_into().or_fail("slice")?) as usize;
+        Ok(if small != 0 { small } else { large })
+    }
+
+    /// Returns the value of `AHCIDevice::blocks_per_command` for blocks of 512 bytes.
+    /// `spare_partition` gives a `dyn BlockDevice`, which does not have that method.
+    fn blocks_per_command() -> usize {
+        let bytes = PRDTEntry::MAX_DATA_SIZE as usize * PRDT_ENTRIES_PER_COMMAND as usize;
+        min(bytes / 512, u16::MAX as usize)
+    }
+
+    /// Returns one block of 512 bytes. Byte `i` has the value `(i + seed) % 256`.
+    fn block_pattern(seed: u8) -> Vec<u8> {
+        (0..512usize).map(|i| (i as u8).wrapping_add(seed)).collect()
+    }
+
+    ktest! {
+        fn block_size_is_512() {
+            check_eq!(spare_partition().block_size(), 512);
+        }
+
+        fn num_blocks_is_not_less_than_the_fat_total_sectors() {
+            let device = spare_partition();
+            let total = fat_total_sectors(device)?;
+            check!(total > 0);
+            check!(device.num_blocks() >= total, "num_blocks {} < FAT total {total}", device.num_blocks());
+        }
+
+        /// A partition has the size of its MBR entry, not the size of the drive.
+        /// Today `num_blocks` gives the sector count of the whole drive.
+        #[known_bug(unfiled)]
+        fn num_blocks_of_a_partition_is_its_size() {
+            let device = spare_partition();
+            let total = fat_total_sectors(device)?;
+            check_eq!(device.num_blocks(), total);
+        }
+
+        fn read_of_block_0_gives_a_boot_sector() {
+            let block = spare_partition().read_blocks(0, 1).or_fail("read_blocks")?;
+            check_eq!(block.len(), 512);
+            check_eq!((block[510], block[511]), (0x55, 0xAA));
+        }
+
+        fn read_of_0_blocks_gives_an_empty_buffer() {
+            let device = spare_partition();
+            check_eq!(device.read_blocks(0, 0).or_fail("read at 0")?.len(), 0);
+            check_eq!(device.read_blocks(5, 0).or_fail("read at 5")?.len(), 0);
+        }
+
+        fn read_of_2_blocks_equals_2_reads_of_1_block() {
+            let device = spare_partition();
+            let both = device.read_blocks(1, 2).or_fail("read 2 blocks")?;
+            let first = device.read_blocks(1, 1).or_fail("read block 1")?;
+            let second = device.read_blocks(2, 1).or_fail("read block 2")?;
+            check_eq!(both.len(), 1024);
+            check!(both[..512] == first[..], "block 1 differs");
+            check!(both[512..] == second[..], "block 2 differs");
+        }
+
+        /// A partition must not read past its end.
+        /// Today `num_blocks` gives the size of the drive, so the index is past the end of the drive.
+        /// The device does not check the index, and the read never ends.
+        #[known_bug(unfiled, crash)]
+        #[timeout(15)]
+        fn read_at_num_blocks_gives_invalid_block() {
+            let device = spare_partition();
+            check_matches!(device.read_blocks(device.num_blocks(), 1), Err(BlockDeviceError::InvalidBlock));
+        }
+
+        /// A read after the last sector of the partition gives `InvalidBlock`.
+        /// Today the device does not check the index, so it reads the sector after the partition.
+        #[known_bug(unfiled)]
+        fn read_after_the_end_of_the_partition_gives_invalid_block() {
+            let device = spare_partition();
+            let total = fat_total_sectors(device)?;
+            check_matches!(device.read_blocks(total, 1), Err(BlockDeviceError::InvalidBlock));
+        }
+
+        /// A read of more blocks than the partition has gives `InvalidBlock`.
+        fn read_of_more_blocks_than_the_partition_gives_invalid_block() {
+            let device = spare_partition();
+            let total = fat_total_sectors(device)?;
+            if total >= blocks_per_command() {
+                fail!("the partition has {total} sectors, too many for this case");
+            }
+            check_matches!(device.read_blocks(0, total + 1), Err(BlockDeviceError::InvalidBlock));
+        }
+
+        /// The last block of the partition keeps the data of a write.
+        /// Today `num_blocks` gives the size of the drive, so the index is past the end of the drive.
+        /// The write never ends.
+        #[known_bug(unfiled, crash)]
+        #[timeout(15)]
+        fn write_then_read_of_the_last_block_gives_the_data() {
+            let device = spare_partition();
+            let last = device.num_blocks() - 1;
+            let data = block_pattern(7);
+            device.write_blocks(last, &data).or_fail("write_blocks")?;
+            let back = device.read_blocks(last, 1).or_fail("read_blocks")?;
+            check!(back[..] == data[..], "the data differs");
+        }
+
+        /// A write of 2 blocks puts each block at its own index.
+        fn write_of_2_blocks_then_read_of_each_block() {
+            let device = spare_partition();
+            let index = fat_total_sectors(device)? - 2;
+            let mut data = block_pattern(1);
+            data.extend(block_pattern(100));
+            device.write_blocks(index, &data).or_fail("write_blocks")?;
+            let first = device.read_blocks(index, 1).or_fail("read first")?;
+            let second = device.read_blocks(index + 1, 1).or_fail("read second")?;
+            check!(first[..] == data[..512], "the first block differs");
+            check!(second[..] == data[512..], "the second block differs");
+        }
+
+        fn write_of_100_bytes_gives_length_not_block_multiple() {
+            let device = spare_partition();
+            check_matches!(device.write_blocks(0, &[0u8; 100]), Err(BlockDeviceError::LengthNotBlockMultiple));
+        }
+
+        fn write_of_no_data_gives_ok() {
+            check_matches!(spare_partition().write_blocks(0, &[]), Ok(()));
+        }
+    }
+}

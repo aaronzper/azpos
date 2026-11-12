@@ -170,6 +170,14 @@ mod tests {
             check!(manager.get_device("").is_none());
             check!(logs[0].borrow().is_empty(), "opened: {:?}", logs[0].borrow());
         }
+
+        /// `init_devices` adds the PS/2 keyboard driver with its device to the global manager.
+        fn the_global_manager_lists_the_keyboard() {
+            let drivers = DEVICE_MANAGER.lock().get_drivers();
+            let keyboard = drivers.iter().find(|d| d.driver_name == "ps2_keyboard").or_fail("no ps2_keyboard driver")?;
+            let names: Vec<&str> = keyboard.devices.iter().map(|d| d.device_name.as_str()).collect();
+            check_eq!(names, vec!["keyboard"]);
+        }
     }
 }
 

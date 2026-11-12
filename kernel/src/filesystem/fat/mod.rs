@@ -425,5 +425,27 @@ mod tests {
             let Ok(fs) = FATFilesystem::mount(&mut disk) else { fail!("mount failed") };
             check!(fs.dir_contents(&path("/d/baddir")).is_none());
         }
+
+        /// The AHCI drive of the root partition reads its boot sector.
+        /// The case is here because only this module can read the field `drive`.
+        fn the_root_drive_reads_a_fat32_boot_sector() {
+            let block = root_fs().drive.read_blocks(0, 1).or_fail("read_blocks")?;
+            check_eq!((block[510], block[511]), (0x55, 0xAA));
+            check_eq!(&block[0x52..0x5A], b"FAT32   ");
+        }
+
+        /// The AHCI drive of the root partition reads more blocks than one command holds.
+        /// One command holds `u16::MAX` blocks.
+        /// Today the read calls `todo!("Multi-command read")`.
+        #[known_bug(unfiled, crash)]
+        fn the_root_drive_reads_more_than_one_command() {
+            let drive = &root_fs().drive;
+            let n = u16::MAX as usize + 1;
+            if drive.num_blocks() < n {
+                fail!("the drive has only {} blocks", drive.num_blocks());
+            }
+            let data = drive.read_blocks(0, n).or_fail("read_blocks")?;
+            check_eq!(data.len(), n * 512);
+        }
     }
 }

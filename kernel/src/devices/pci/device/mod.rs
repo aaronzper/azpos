@@ -56,3 +56,67 @@ impl PCIDevice {
         (self.class, self.subclass)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::devices::pci::PCIController;
+    use crate::devices::storage::ahci::SATA_PCI_SUBCLASS;
+    use crate::ktest::*;
+    use alloc::vec::Vec;
+
+    ktest! {
+        /// QEMU puts the Intel host bridge at bus 0, device 0, function 0.
+        fn the_scan_finds_the_host_bridge_first() {
+            let pci = PCIController::new();
+            let first = pci.devices().first().or_fail("no PCI device")?;
+            check_eq!((first.bus, first.device, first.function), (0, 0, 0));
+            check_eq!(first.vendor_id(), 0x8086);
+            check_eq!(first.class(), (PCIDeviceClass::Bridge, 0x00));
+        }
+
+        fn the_scan_finds_exactly_one_sata_controller() {
+            let pci = PCIController::new();
+            let count = pci.devices().iter()
+                .filter(|d| d.class() == (PCIDeviceClass::MassStorageCtrl, SATA_PCI_SUBCLASS))
+                .count();
+            check_eq!(count, 1);
+        }
+
+        /// The scan lists each function one time, in the order of its address.
+        fn the_scan_lists_each_function_once_in_order() {
+            let pci = PCIController::new();
+            let addrs: Vec<(u8, u8, u8)> = pci.devices().iter().map(|d| (d.bus, d.device, d.function)).collect();
+            check!(addrs.windows(2).all(|w| w[0] < w[1]), "addresses: {addrs:?}");
+        }
+
+        /// No device answers at the last address of bus 0.
+        fn new_of_an_empty_address_gives_none() {
+            check!(PCIDevice::new(0, 31, 7).is_none());
+        }
+
+        fn class_from_a_known_code() {
+            check_eq!(PCIDeviceClass::try_from(0x01), Ok(PCIDeviceClass::MassStorageCtrl));
+            check_eq!(PCIDeviceClass::try_from(0x40), Ok(PCIDeviceClass::CoProcessor));
+            check_eq!(PCIDeviceClass::try_from(0xFF), Ok(PCIDeviceClass::Unassigned));
+        }
+
+        fn class_from_a_reserved_code_gives_an_error() {
+            check_eq!(PCIDeviceClass::try_from(0x14), Err(()));
+            check_eq!(PCIDeviceClass::try_from(0x3F), Err(()));
+            check_eq!(PCIDeviceClass::try_from(0x41), Err(()));
+        }
+
+        /// The rustdoc of the `config` module says that a device number of 32 or more panics.
+        #[should_panic("Device number must be 5 bits")]
+        fn new_with_a_device_number_of_32_panics() {
+            let _ = PCIDevice::new(0, 32, 0);
+        }
+
+        /// The rustdoc of the `config` module says that a function number of 8 or more panics.
+        #[should_panic("Function number must be 3 bits")]
+        fn new_with_a_function_number_of_8_panics() {
+            let _ = PCIDevice::new(0, 0, 8);
+        }
+    }
+}
